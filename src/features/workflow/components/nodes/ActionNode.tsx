@@ -10,9 +10,9 @@ import { Ban, AlertTriangle } from 'lucide-react';
 export const ActionNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selected }) => {
   const { categories } = usePluginStore();
   const nodeGroups = useMemo(() => catalogToNodeCategories(categories), [categories]);
-  const def = useMemo(() => getNodeDefinition(data.type as string, nodeGroups), [data.type, nodeGroups]);
+  const def = useMemo(() => getNodeDefinition(data.pluginMetadata?.name as string, nodeGroups), [data.pluginMetadata?.name, nodeGroups]);
   const Icon = def?.icon || Ban;
-  const isConfigured = data.isConfigured !== false; 
+  const isConfigured = data.config?.isConfigured !== false; 
   const isValid = data.uiState?.isValid !== false; // Default to valid if not set
 
   return (
@@ -51,9 +51,9 @@ export const ActionNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, select
               <Icon className={cn('size-5', def?.color?.replace('bg-', 'text-'))} />
             </div>
             <div className="flex flex-col flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-foreground truncate">{data.label}</h3>
+              <h3 className="text-sm font-semibold text-foreground truncate">{data.config?.nodeLabel || data.pluginMetadata?.displayName}</h3>
               <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-                {data.description}
+                {data.pluginMetadata?.description}
               </p>
             </div>
           </div>

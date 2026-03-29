@@ -76,13 +76,19 @@ const WorkflowCanvas: React.FC = () => {
           type: 'startNode',
           position: { x: 300, y: 50 },
           data: {
-            label: 'Webhook',
-            type: 'webhook_trigger',
-            category: 'trigger',
-            description: 'Listen for incoming requests',
-            isConfigured: true,
+            pluginMetadata: {
+              name: 'webhook_trigger',
+              displayName: 'Webhook',
+              category: 'trigger',
+              description: 'Listen for incoming requests',
+            },
+            config: {
+              inputs: {},
+              isConfigured: true,
+              stepId: 'Step_1_Start',
+            },
+            uiState: { isValid: true },
             status: 'idle',
-            stepId: 'Step_1_Start',
           },
         },
         {
@@ -90,13 +96,19 @@ const WorkflowCanvas: React.FC = () => {
           type: 'actionNode',
           position: { x: 300, y: 250 },
           data: {
-            label: 'HTTP Request',
-            type: 'http_request',
-            category: 'api',
-            description: 'Call external API',
-            isConfigured: false,
+            pluginMetadata: {
+              name: 'http_request',
+              displayName: 'HTTP Request',
+              category: 'api',
+              description: 'Call external API',
+            },
+            config: {
+              inputs: {},
+              isConfigured: false,
+              stepId: 'Step_2_Action1',
+            },
+            uiState: { isValid: false },
             status: 'idle',
-            stepId: 'Step_2_Action1',
           },
         },
         {
@@ -104,13 +116,19 @@ const WorkflowCanvas: React.FC = () => {
           type: 'actionNode',
           position: { x: 300, y: 450 },
           data: {
-            label: 'Send Email',
-            type: 'send_email',
-            category: 'action',
-            description: 'Notify on success',
-            isConfigured: true,
+            pluginMetadata: {
+              name: 'send_email',
+              displayName: 'Send Email',
+              category: 'action',
+              description: 'Notify on success',
+            },
+            config: {
+              inputs: {},
+              isConfigured: true,
+              stepId: 'Step_3_Action2',
+            },
+            uiState: { isValid: true },
             status: 'idle',
-            stepId: 'Step_3_Action2',
           },
         },
       ];
@@ -160,26 +178,31 @@ const WorkflowCanvas: React.FC = () => {
       const isStart = category === 'trigger' || category === 'Trigger';
 
       // Build plugin metadata (only include defined values)
-      const pluginMeta: Record<string, unknown> = {};
+      const pluginMeta: any = {
+        name: type,
+        displayName: label,
+        category,
+        description,
+      };
       if (pluginData.executionMode) pluginMeta.executionMode = pluginData.executionMode;
       if (pluginData.inputSchema) pluginMeta.inputSchema = pluginData.inputSchema;
       if (pluginData.outputSchema) pluginMeta.outputSchema = pluginData.outputSchema;
       if (pluginData.packageId) pluginMeta.packageId = pluginData.packageId;
-      if (pluginData.activeVersion) pluginMeta.activeVersion = pluginData.activeVersion;
+      if (pluginData.activeVersion) pluginMeta.version = pluginData.activeVersion;
 
       const newNode: WorkflowNode = {
         id: `${type}-${Date.now()}`,
         type: isStart ? 'startNode' : 'actionNode',
         position,
         data: {
-          type,
-          label,
-          category,
-          description,
-          isConfigured: false,
+          pluginMetadata: pluginMeta,
+          config: {
+            inputs: {},
+            isConfigured: false,
+            stepId: `${label.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}`,
+          },
+          uiState: { isValid: true },
           status: 'idle',
-          stepId: `${label.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}`,
-          ...pluginMeta,
         },
       };
 

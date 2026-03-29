@@ -259,7 +259,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
 
   const nodeGroups = useMemo(() => catalogToNodeCategories(categories), [categories]);
   const def = useMemo(
-    () => (node ? getNodeDefinition(node.data.type as string || node.data.label, nodeGroups) : null),
+    () => (node ? getNodeDefinition((node.data.pluginMetadata?.name as string) || (node.data.config?.nodeLabel as string) || '', nodeGroups) : null),
     [node, nodeGroups]
   );
 
@@ -271,10 +271,10 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
 
   // ── Plugin Detail API (with React Query caching) ──
-  const pluginName = node?.data.type as string | undefined;
-  const executionMode = (node?.data.executionMode as string) || def?.executionMode;
-  const packageId = (node?.data.packageId as string) || def?.packageId;
-  const currentVersion = selectedVersion || (node?.data.activeVersion as string) || def?.activeVersion || 'Built-in';
+  const pluginName = node?.data.pluginMetadata?.name as string | undefined;
+  const executionMode = (node?.data.pluginMetadata?.executionMode as string) || def?.executionMode;
+  const packageId = (node?.data.pluginMetadata?.packageId as string) || def?.packageId;
+  const currentVersion = selectedVersion || (node?.data.pluginMetadata?.version as string) || def?.activeVersion || 'Built-in';
   const isBuiltIn = executionMode === 'BuiltIn' || currentVersion === 'Built-in';
 
   const {
@@ -304,12 +304,12 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   // ── Resolve schemas: API detail > catalog fallback ──
   const inputSchema = useMemo<JsonSchema>(() => {
     if (pluginDetail?.inputSchema) return pluginDetail.inputSchema;
-    return (node?.data.inputSchema as JsonSchema) || (def?.inputSchema as unknown as JsonSchema) || {};
+    return (node?.data.pluginMetadata?.inputSchema as JsonSchema) || (def?.inputSchema as unknown as JsonSchema) || {};
   }, [pluginDetail, node, def]);
 
   const outputSchema = useMemo<JsonSchema>(() => {
     if (pluginDetail?.outputSchema) return pluginDetail.outputSchema;
-    return (node?.data.outputSchema as JsonSchema) || (def?.outputSchema as unknown as JsonSchema) || {};
+    return (node?.data.pluginMetadata?.outputSchema as JsonSchema) || (def?.outputSchema as unknown as JsonSchema) || {};
   }, [pluginDetail, node, def]);
 
   const hasInputFields = inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
@@ -317,7 +317,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
 
   // ── Get form data from store ──
   const formData = useMemo(() => {
-    return (node?.data.inputs as Record<string, unknown>) || (node?.data.config as Record<string, unknown>) || {};
+    return (node?.data.config?.inputs as Record<string, unknown>) || {};
   }, [node]);
 
   // ── RJSF schema conversion: resolve $ref/oneOf patterns from backend ──
@@ -331,11 +331,11 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   // ── Reset form when node changes ──
   useEffect(() => {
     if (node) {
-      setNodeName(node.data.label);
-      setNodeDescription(node.data.description || '');
-      setStepId((node.data.stepId as string) || node.id);
+      setNodeName((node.data.config?.nodeLabel || node.data.pluginMetadata?.displayName) || '');
+      setNodeDescription((node.data.pluginMetadata?.description) || '');
+      setStepId((node.data.config?.stepId as string) || node.id);
       setSelectedVersion(
-        (node.data.activeVersion as string) || def?.activeVersion || 'Built-in'
+        (node.data.pluginMetadata?.version as string) || def?.activeVersion || 'Built-in'
       );
     }
   }, [node, def]);
@@ -380,15 +380,20 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const handleSave = useCallback(() => {
     if (!node) return;
     updateNodeData(node.id, {
-      label: nodeName,
-      stepId,
-      description: nodeDescription,
-      config: formData,
-      inputs: formData,
-      isConfigured: true,
-      activeVersion: selectedVersion,
-      executionMetadata: pluginDetail?.executionMetadata || null,
-    });
+      pluginMetadata: {
+        ...node.data.pluginMetadata,
+        version: selectedVersion,
+        description: nodeDescription, // Save custom description here if edited
+        executionMetadata: pluginDetail?.executionMetadata as Record<string, unknown> | undefined,
+      },
+      config: {
+        ...node.data.config,
+        nodeLabel: nodeName,
+        stepId,
+        inputs: formData as Record<string, unknown>,
+        isConfigured: true,
+      },
+    } as any);
     onClose();
   }, [node, nodeName, stepId, nodeDescription, formData, selectedVersion, updateNodeData, onClose, pluginDetail]);
 
@@ -423,7 +428,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <DialogTitle className="text-lg font-bold leading-tight">
-                      {node.data.label}
+                      {node.data.config?.nodeLabel || node.data.pluginMetadata?.displayName}
                     </DialogTitle>
                     <Badge
                       variant="outline"
@@ -440,14 +445,14 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                   </div>
 
                   <DialogDescription className="mt-1 text-sm leading-relaxed">
-                    {node.data.description || 'Không có mô tả'}
+                    {node.data.pluginMetadata?.description || 'Không có mô tả'}
                   </DialogDescription>
 
                   {/* Meta info chips */}
                   <div className="flex items-center gap-3 mt-2.5 flex-wrap">
                     <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
                       <Package className="size-3" />
-                      <span className="font-mono">{node.data.category as string}</span>
+                      <span className="font-mono">{node.data.pluginMetadata?.category as string}</span>
                     </div>
                     <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
                       <Hash className="size-3" />

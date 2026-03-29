@@ -31,25 +31,37 @@ export interface ExecutionLogItem {
 
 export interface NodeUiState {
   isValid: boolean;
+  isLoading?: boolean;
+  errorMessage?: string;
+  isHovered?: boolean;
 }
 
-export interface WorkflowNodeData {
-  label: string;
+export interface NodePluginMetadata {
+  name: string;
+  displayName?: string;
   category: NodeCategory;
   description?: string;
   icon?: string;
-  config?: Record<string, unknown>;
-  isConfigured?: boolean;
-  // Dynamic plugin metadata from the API
+  version?: string;
   executionMode?: string;
+  executionMetadata?: Record<string, unknown>;
+  packageId?: string | null;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
-  packageId?: string | null;
-  activeVersion?: string;
-  // Form data from RJSF dynamic schema form
-  inputs?: Record<string, unknown>;
-  // UI state for validation visuals on canvas
-  uiState?: NodeUiState;
+}
+
+export interface NodeConfigData {
+  inputs: Record<string, unknown>;
+  inputTypes?: Record<string, 'static' | 'expression'>;
+  nodeLabel?: string;
+  stepId?: string;
+  isConfigured?: boolean;
+}
+
+export interface WorkflowNodeData {
+  pluginMetadata: NodePluginMetadata;
+  config: NodeConfigData;
+  uiState: NodeUiState;
   [key: string]: unknown;
 }
 
@@ -227,7 +239,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   updateNodeInputs: (nodeId, newInputs) => {
     set((state) => ({
       nodes: state.nodes.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, inputs: newInputs } } : n
+        n.id === nodeId ? { ...n, data: { ...n.data, config: { ...n.data.config, inputs: newInputs } } } : n
       ),
       isSaved: false,
     }));
@@ -251,10 +263,19 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
               ...n,
               data: {
                 ...n.data,
-                activeVersion: newVersion,
-                inputs: {},           // Clear form data on version change
-                isConfigured: false,  // Mark as unconfigured
-                uiState: { isValid: true }, // Reset validation
+                pluginMetadata: {
+                  ...n.data.pluginMetadata,
+                  version: newVersion,
+                },
+                config: {
+                  ...n.data.config,
+                  inputs: {},
+                  isConfigured: false,
+                },
+                uiState: {
+                  ...n.data.uiState,
+                  isValid: true,
+                },
               },
             }
           : n

@@ -58,11 +58,11 @@ export const WorkflowTopbar: React.FC = () => {
     try {
       const steps = nodes.map(node => {
         return {
-          Id: (node.data.stepId as string) || node.id,
-          Type: node.data.type as string,
-          ExecutionMode: (node.data.executionMode as string) || 'BuiltIn',
-          ExecutionMetadata: node.data.executionMetadata || undefined,
-          Inputs: node.data.inputs || {},
+          Id: (node.data.config?.stepId as string) || node.id,
+          Type: node.data.pluginMetadata?.name as string,
+          ExecutionMode: (node.data.pluginMetadata?.executionMode as string) || 'BuiltIn',
+          ExecutionMetadata: node.data.pluginMetadata?.executionMetadata || undefined,
+          Inputs: node.data.config?.inputs || {},
         };
       });
 
@@ -72,8 +72,8 @@ export const WorkflowTopbar: React.FC = () => {
         
         return {
           Id: `Transition_${index}`, // Optional if needed
-          Source: (sourceNode?.data.stepId as string) || edge.source,
-          Target: (targetNode?.data.stepId as string) || edge.target,
+          Source: (sourceNode?.data.config?.stepId as string) || edge.source,
+          Target: (targetNode?.data.config?.stepId as string) || edge.target,
         };
       });
 
@@ -137,8 +137,8 @@ export const WorkflowTopbar: React.FC = () => {
           addExecutionLog({
             id: `log-${Date.now()}-${id}-start`,
             nodeId: id,
-            nodeLabel: node.data.label,
-            nodeType: node.data.type as string,
+            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
+            nodeType: node.data.pluginMetadata?.name as string,
             status: 'running',
             timestamp: new Date().toISOString(),
           });
@@ -155,14 +155,14 @@ export const WorkflowTopbar: React.FC = () => {
         if (node) {
           // Output simulated mock data based on node type
           let mockOutput = { success: true, timestamp: new Date().toISOString() };
-          if (node.data.type === 'webhook_trigger') mockOutput = { ...mockOutput, method: 'POST', body: { user: 'test' } } as any;
-          if (node.data.category === 'api') mockOutput = { ...mockOutput, statusCode: 200, response: { data: 'ok' } } as any;
+          if (node.data.pluginMetadata?.name === 'webhook_trigger') mockOutput = { ...mockOutput, method: 'POST', body: { user: 'test' } } as any;
+          if (node.data.pluginMetadata?.category === 'api') mockOutput = { ...mockOutput, statusCode: 200, response: { data: 'ok' } } as any;
 
           addExecutionLog({
             id: `log-${Date.now()}-${id}-end`,
             nodeId: id,
-            nodeLabel: node.data.label,
-            nodeType: node.data.type as string,
+            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
+            nodeType: node.data.pluginMetadata?.name as string,
             status: 'success',
             timestamp: new Date().toISOString(),
             duration: Math.floor(Math.random() * 500) + 100, // mock duration

@@ -82,6 +82,7 @@ const WorkflowCanvas: React.FC = () => {
             description: 'Listen for incoming requests',
             isConfigured: true,
             status: 'idle',
+            stepId: 'Step_1_Start',
           },
         },
         {
@@ -95,6 +96,7 @@ const WorkflowCanvas: React.FC = () => {
             description: 'Call external API',
             isConfigured: false,
             status: 'idle',
+            stepId: 'Step_2_Action1',
           },
         },
         {
@@ -108,6 +110,7 @@ const WorkflowCanvas: React.FC = () => {
             description: 'Notify on success',
             isConfigured: true,
             status: 'idle',
+            stepId: 'Step_3_Action2',
           },
         },
       ];
@@ -175,6 +178,7 @@ const WorkflowCanvas: React.FC = () => {
           description,
           isConfigured: false,
           status: 'idle',
+          stepId: `${label.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}`,
           ...pluginMeta,
         },
       };

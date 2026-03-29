@@ -8,7 +8,7 @@ import type { WorkflowNode } from '@/stores/workflowStore';
 const WorkflowNodeComponent: React.FC<NodeProps<WorkflowNode>> = ({ data, selected }) => {
   const { categories } = usePluginStore();
   const nodeGroups = catalogToNodeCategories(categories);
-  const definition = getNodeDefinition(data.type as string || data.label, nodeGroups);
+  const definition = getNodeDefinition((data.pluginMetadata?.name as string) || (data.config?.nodeLabel as string) || '', nodeGroups);
   const Icon = definition?.icon;
 
   // Category colors
@@ -21,7 +21,7 @@ const WorkflowNodeComponent: React.FC<NodeProps<WorkflowNode>> = ({ data, select
     output: { header: 'bg-cyan-500', ring: 'ring-cyan-500/30', indicator: 'bg-cyan-400' },
   };
 
-  const colors = categoryColors[data.category] || categoryColors.action;
+  const colors = categoryColors[data.pluginMetadata?.category as string] || categoryColors.action;
 
   return (
     <div
@@ -32,8 +32,7 @@ const WorkflowNodeComponent: React.FC<NodeProps<WorkflowNode>> = ({ data, select
         !selected && 'hover:shadow-lg hover:border-border/80'
       )}
     >
-      {/* Input handle (not for triggers) */}
-      {data.category !== 'trigger' && (
+      {data.pluginMetadata?.category !== 'trigger' && (
         <Handle
           type="target"
           position={Position.Top}
@@ -52,19 +51,19 @@ const WorkflowNodeComponent: React.FC<NodeProps<WorkflowNode>> = ({ data, select
         </div>
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-semibold text-white truncate leading-tight">
-            {data.label}
+            {(data.config?.nodeLabel as string) || (data.pluginMetadata?.displayName as string)}
           </span>
           <span className="text-[10px] text-white/70 capitalize leading-tight">
-            {data.category}
+            {data.pluginMetadata?.category as string}
           </span>
         </div>
       </div>
 
       {/* Body */}
       <div className="px-3 py-2.5">
-        {data.description ? (
+        {data.pluginMetadata?.description ? (
           <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
-            {data.description}
+            {data.pluginMetadata?.description as string}
           </p>
         ) : (
           <p className="text-[11px] text-muted-foreground/50 italic">
@@ -73,23 +72,22 @@ const WorkflowNodeComponent: React.FC<NodeProps<WorkflowNode>> = ({ data, select
         )}
 
         {/* Configured indicator */}
-        {data.isConfigured !== undefined && (
+        {data.config?.isConfigured !== undefined && (
           <div className="flex items-center gap-1.5 mt-2">
             <div
               className={cn(
                 'size-1.5 rounded-full',
-                data.isConfigured ? 'bg-emerald-400' : 'bg-amber-400'
+                data.config?.isConfigured ? 'bg-emerald-400' : 'bg-amber-400'
               )}
             />
             <span className="text-[10px] text-muted-foreground">
-              {data.isConfigured ? 'Configured' : 'Needs setup'}
+              {data.config?.isConfigured ? 'Configured' : 'Needs setup'}
             </span>
           </div>
         )}
       </div>
 
-      {/* Output handle (not for output nodes) */}
-      {data.category !== 'output' && (
+      {data.pluginMetadata?.category !== 'output' && (
         <Handle
           type="source"
           position={Position.Bottom}

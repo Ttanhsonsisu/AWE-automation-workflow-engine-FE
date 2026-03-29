@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { JsonSchema } from '@/types/plugin';
 import {
   type Node,
   type Edge,
@@ -28,19 +29,39 @@ export interface ExecutionLogItem {
   error?: string;
 }
 
-export interface WorkflowNodeData {
-  label: string;
+export interface NodeUiState {
+  isValid: boolean;
+  isLoading?: boolean;
+  errorMessage?: string;
+  isHovered?: boolean;
+}
+
+export interface NodePluginMetadata {
+  name: string;
+  displayName?: string;
   category: NodeCategory;
   description?: string;
   icon?: string;
-  config?: Record<string, unknown>;
-  isConfigured?: boolean;
-  // Dynamic plugin metadata from the API
+  version?: string;
   executionMode?: string;
+  executionMetadata?: Record<string, unknown>;
+  packageId?: string | null;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
-  packageId?: string | null;
-  activeVersion?: string;
+}
+
+export interface NodeConfigData {
+  inputs: Record<string, unknown>;
+  inputTypes?: Record<string, 'static' | 'expression'>;
+  nodeLabel?: string;
+  stepId?: string;
+  isConfigured?: boolean;
+}
+
+export interface WorkflowNodeData {
+  pluginMetadata: NodePluginMetadata;
+  config: NodeConfigData;
+  uiState: NodeUiState;
   [key: string]: unknown;
 }
 
@@ -54,6 +75,12 @@ interface HistorySnapshot {
 }
 
 const MAX_HISTORY = 50;
+
+// ── Schema cache entry ───────────────────────────
+interface SchemaCacheEntry {
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+}
 
 // ── Store Interface ──────────────────────────────
 interface WorkflowState {
@@ -77,6 +104,9 @@ interface WorkflowState {
   // Selected node (for config panel)
   selectedNodeId: string | null;
 
+  // Schema cache: key = "pluginName_version" → schemas
+  schemaCache: Record<string, SchemaCacheEntry>;
+
   // ── Actions ──
   setWorkflow: (id: string, name: string, nodes: WorkflowNode[], edges: WorkflowEdge[]) => void;
   setWorkflowName: (name: string) => void;
@@ -89,6 +119,12 @@ interface WorkflowState {
   // Node manipulation
   addNode: (node: WorkflowNode) => void;
   updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void;
+  /** Update only the inputs (form data) of a specific node — avoids re-rendering other nodes */
+  updateNodeInputs: (nodeId: string, newInputs: Record<string, unknown>) => void;
+  /** Mark a node as valid/invalid for canvas validation visuals */
+  setNodeValidation: (nodeId: string, isValid: boolean) => void;
+  /** Switch plugin version: updates version and clears inputs to avoid schema mismatch */
+  changeNodeVersion: (nodeId: string, newVersion: string) => void;
   deleteNode: (nodeId: string) => void;
 
   // Selection
@@ -104,6 +140,10 @@ interface WorkflowState {
   // Save state
   markSaved: () => void;
   markUnsaved: () => void;
+
+  // Schema cache
+  setSchemaCache: (key: string, schemas: SchemaCacheEntry) => void;
+  getSchemaCache: (key: string) => SchemaCacheEntry | undefined;
 
   // Execution
   setExecuting: (executing: boolean) => void;
@@ -126,6 +166,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   history: [],
   historyIndex: -1,
   selectedNodeId: null,
+  schemaCache: {},
 
   // ── Set entire workflow ──
   setWorkflow: (id, name, nodes, edges) => {
@@ -193,6 +234,55 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ),
       isSaved: false,
     }));
+  },
+
+  updateNodeInputs: (nodeId, newInputs) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, config: { ...n.data.config, inputs: newInputs } } } : n
+      ),
+      isSaved: false,
+    }));
+  },
+
+  setNodeValidation: (nodeId, isValid) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, uiState: { ...n.data.uiState, isValid } } }
+          : n
+      ),
+    }));
+  },
+
+  changeNodeVersion: (nodeId, newVersion) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                pluginMetadata: {
+                  ...n.data.pluginMetadata,
+                  version: newVersion,
+                },
+                config: {
+                  ...n.data.config,
+                  inputs: {},
+                  isConfigured: false,
+                },
+                uiState: {
+                  ...n.data.uiState,
+                  isValid: true,
+                },
+              },
+            }
+          : n
+      ),
+      isSaved: false,
+    }));
+    get().pushHistory();
   },
 
   deleteNode: (nodeId) => {
@@ -266,6 +356,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // ── Save state ──
   markSaved: () => set({ isSaved: true }),
   markUnsaved: () => set({ isSaved: false }),
+
+  // ── Schema Cache ──
+  setSchemaCache: (key, schemas) => {
+    set((state) => ({
+      schemaCache: { ...state.schemaCache, [key]: schemas },
+    }));
+  },
+  getSchemaCache: (key) => get().schemaCache[key],
 
   // ── Execution ──
   setExecuting: (executing) => {

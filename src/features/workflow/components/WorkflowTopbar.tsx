@@ -22,6 +22,7 @@ import {
   BugPlay,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { saveWorkflowDefinition } from '@/services/workflowService';
 
 export const WorkflowTopbar: React.FC = () => {
   const navigate = useNavigate();
@@ -42,9 +43,65 @@ export const WorkflowTopbar: React.FC = () => {
     clearExecutionLogs,
   } = useWorkflowStore();
 
-  const handleSave = () => {
-    // TODO: call API to save
-    markSaved();
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const handleSave = async () => {
+    const store = useWorkflowStore.getState();
+    const { nodes, edges, workflowName } = store;
+
+    if (nodes.length === 0) {
+      alert("Không có Node nào trên Canvas để lưu!");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const steps = nodes.map(node => {
+        return {
+          Id: (node.data.config?.stepId as string) || node.id,
+          Type: node.data.pluginMetadata?.name as string,
+          ExecutionMode: (node.data.pluginMetadata?.executionMode as string) || 'BuiltIn',
+          ExecutionMetadata: node.data.pluginMetadata?.executionMetadata || undefined,
+          Inputs: node.data.config?.inputs || {},
+        };
+      });
+
+      const transitions = edges.map((edge, index) => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        
+        return {
+          Id: `Transition_${index}`, // Optional if needed
+          Source: (sourceNode?.data.config?.stepId as string) || edge.source,
+          Target: (targetNode?.data.config?.stepId as string) || edge.target,
+        };
+      });
+
+      const payload = {
+        Name: workflowName || 'Untitled Workflow',
+        DefinitionJson: {
+          Steps: steps,
+          Transitions: transitions,
+        },
+        UiJson: JSON.stringify({
+          nodes,
+          edges,
+        })
+      };
+
+      const result = await saveWorkflowDefinition(payload);
+      if (result && result.success) {
+        alert("Lưu định nghĩa Workflow thành công!");
+        markSaved();
+      } else {
+        alert("Lưu Workflow thất bại. Vui lòng thử lại.");
+      }
+    } catch (error: any) {
+      console.error("Save workflow error:", error);
+      alert(error?.message || "Đã xảy ra lỗi khi lưu Workflow.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleTestExecution = async () => {
@@ -80,8 +137,8 @@ export const WorkflowTopbar: React.FC = () => {
           addExecutionLog({
             id: `log-${Date.now()}-${id}-start`,
             nodeId: id,
-            nodeLabel: node.data.label,
-            nodeType: node.data.type as string,
+            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
+            nodeType: node.data.pluginMetadata?.name as string,
             status: 'running',
             timestamp: new Date().toISOString(),
           });
@@ -98,14 +155,14 @@ export const WorkflowTopbar: React.FC = () => {
         if (node) {
           // Output simulated mock data based on node type
           let mockOutput = { success: true, timestamp: new Date().toISOString() };
-          if (node.data.type === 'webhook_trigger') mockOutput = { ...mockOutput, method: 'POST', body: { user: 'test' } } as any;
-          if (node.data.category === 'api') mockOutput = { ...mockOutput, statusCode: 200, response: { data: 'ok' } } as any;
+          if (node.data.pluginMetadata?.name === 'webhook_trigger') mockOutput = { ...mockOutput, method: 'POST', body: { user: 'test' } } as any;
+          if (node.data.pluginMetadata?.category === 'api') mockOutput = { ...mockOutput, statusCode: 200, response: { data: 'ok' } } as any;
 
           addExecutionLog({
             id: `log-${Date.now()}-${id}-end`,
             nodeId: id,
-            nodeLabel: node.data.label,
-            nodeType: node.data.type as string,
+            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
+            nodeType: node.data.pluginMetadata?.name as string,
             status: 'success',
             timestamp: new Date().toISOString(),
             duration: Math.floor(Math.random() * 500) + 100, // mock duration
@@ -187,8 +244,8 @@ export const WorkflowTopbar: React.FC = () => {
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="text-amber-500 hover:text-amber-600 transition-colors cursor-help bg-amber-500/10 p-1.5 rounded-md" onClick={handleSave}>
-                  <Save className="size-4" />
+                <div className={cn("text-amber-500 hover:text-amber-600 transition-colors p-1.5 rounded-md", isSaving ? "cursor-not-allowed opacity-50" : "cursor-pointer bg-amber-500/10")} onClick={!isSaving ? handleSave : undefined}>
+                  {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">Click to Save</TooltipContent>

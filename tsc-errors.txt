@@ -1,0 +1,16 @@
+﻿src/features/workflow/components/NodeConfigPanel.tsx(262,37): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/features/workflow/components/WorkflowNode.tsx(11,40): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/features/workflow/components/WorkflowNode.tsx(24,33): error TS2538: Type 'unknown' cannot be used as an index type.
+src/features/workflow/components/WorkflowNode.tsx(55,13): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/features/workflow/components/WorkflowNode.tsx(58,13): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/features/workflow/components/WorkflowNode.tsx(67,13): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/features/workflow/components/WorkflowTopbar.tsx(92,51): error TS2345: Argument of type '{ Name: string; DefinitionJson: { Steps: { Id: string; Type: string; ExecutionMode: string; ExecutionMetadata: {} | undefined; Inputs: {}; }[]; Transitions: { Id: string; Source: string; Target: string; }[]; }; UiJson: string; }' is not assignable to parameter of type 'WorkflowDefinitionPayload'.
+  The types of 'DefinitionJson.Steps' are incompatible between these types.
+    Type '{ Id: string; Type: string; ExecutionMode: string; ExecutionMetadata: {} | undefined; Inputs: {}; }[]' is not assignable to type '{ Id: string; Type: string; ExecutionMode: string; ExecutionMetadata?: any; Inputs?: Record<string, unknown> | undefined; }[]'.
+      Type '{ Id: string; Type: string; ExecutionMode: string; ExecutionMetadata: {} | undefined; Inputs: {}; }' is not assignable to type '{ Id: string; Type: string; ExecutionMode: string; ExecutionMetadata?: any; Inputs?: Record<string, unknown> | undefined; }'.
+        Types of property 'Inputs' are incompatible.
+          Type '{}' is not assignable to type 'Record<string, unknown>'.
+            Index signature for type 'string' is missing in type '{}'.
+src/features/workflow/components/WorkflowTopbar.tsx(140,13): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/features/workflow/components/WorkflowTopbar.tsx(164,13): error TS2322: Type 'unknown' is not assignable to type 'string'.

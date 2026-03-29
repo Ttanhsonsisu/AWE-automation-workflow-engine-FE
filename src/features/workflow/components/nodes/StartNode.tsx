@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 export const StartNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selected }) => {
   const { categories } = usePluginStore();
   const nodeGroups = catalogToNodeCategories(categories);
-  const def = getNodeDefinition(data.type as string, nodeGroups);
+  const def = getNodeDefinition(data.pluginMetadata?.name as string, nodeGroups);
   const Icon = def?.icon || Play;
 
   return (
@@ -31,9 +31,9 @@ export const StartNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selecte
             <Icon className="size-5 text-primary" />
           </div>
           <div className="flex flex-col flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-foreground truncate">{data.label}</h3>
+            <h3 className="text-sm font-semibold text-foreground truncate">{data.config?.nodeLabel || data.pluginMetadata?.displayName}</h3>
             <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-              {data.description}
+              {data.pluginMetadata?.description}
             </p>
           </div>
         </div>

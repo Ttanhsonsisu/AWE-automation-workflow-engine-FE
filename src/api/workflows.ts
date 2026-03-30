@@ -37,43 +37,88 @@ const mockWorkflows: WorkflowSchema[] = [
   },
 ];
 
-// ── GET Workflows ──
-export const fetchWorkflows = async (): Promise<WorkflowSchema[]> => {
-  // Uncomment below when backend is ready
-  // const { data } = await apiClient.get<WorkflowSchema[]>('/workflows');
-  // return data;
+export interface WorkflowFilterParams {
+  pageSize?: number;
+  pageNo?: number;
+  groupVersion?: boolean;
+  isPublished?: boolean;
+  name?: string;
+}
 
-  // Mock implementation
-  return new Promise((resolve) => setTimeout(() => resolve(mockWorkflows), 600));
+export const fetchWorkflows = async (params: WorkflowFilterParams = {}): Promise<any> => {
+  // Merge defaults with provided params
+  const queryParams = {
+    pageSize: 30,
+    pageNo: 1,
+    groupVersion: true,
+    ...params
+  };
+
+  const { data } = await apiClient.get('/workflows/definitions', {
+    params: queryParams
+  });
+  console.log("🔥 [fetchWorkflows] Raw Data from API:", data);
+  
+  // To handle if data is already the paginated object vs wrapped in {success, data}
+  return data.data || data; 
 };
 
-export const useWorkflows = () => {
+export const useWorkflows = (params: WorkflowFilterParams = {}) => {
   return useQuery({
-    queryKey: ['workflows'],
-    queryFn: fetchWorkflows,
+    queryKey: ['workflows', params],
+    queryFn: () => fetchWorkflows(params),
   });
 };
 
 // ── CREATE Workflow ──
-export const createWorkflow = async (name: string): Promise<WorkflowSchema> => {
-  const newWf: WorkflowSchema = {
-    id: `wf-${Math.floor(Math.random() * 10000)}`,
-    name,
-    status: 'Draft',
-    nodes: [],
-    edges: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  return new Promise((resolve) => setTimeout(() => resolve(newWf), 400));
+import { createWorkflowDefinition } from '@/services/workflowService';
+import type { WorkflowGroup, WorkflowPagedResponse, WorkflowVersion } from '@/types';
+
+export const createWorkflow = async (name: string): Promise<WorkflowVersion> => {
+  try {
+    const result = await createWorkflowDefinition({
+      Name: name,
+      DefinitionJson: { Steps: [], Transitions: [] },
+      UiJson: null,
+    });
+
+    return {
+      id: result.data.id || result.id, 
+      name: result.data.name || result.name || name,
+      version: result.data.version || result.version || 1,
+      isPublished: false,
+      createdAt: new Date().toISOString(),
+      lastUpdated: null,
+      totalRunCount: 0,
+      statusCounts: {
+        Running: 0, Suspended: 0, Completed: 0, Failed: 0, Compensating: 0, Compensated: 0, Cancelled: 0
+      }
+    } as WorkflowVersion;
+  } catch (error) {
+    console.error("Failed to create workflow definition:", error);
+    // Fallback or rethrow
+    throw error;
+  }
 };
 
 export const useCreateWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createWorkflow,
-    onSuccess: (newWf) => {
-      queryClient.setQueryData(['workflows'], (old: WorkflowSchema[] = []) => [newWf, ...old]);
+    onSuccess: (newVersion) => {
+      queryClient.setQueryData(['workflows'], (old: WorkflowPagedResponse | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: [
+            {
+              name: newVersion.name,
+              versions: [newVersion]
+            },
+            ...(Array.isArray(old.items) ? old.items : [])
+          ]
+        };
+      });
     },
   });
 };
@@ -89,15 +134,9 @@ export const useUpdateWorkflowStatus = () => {
     mutationFn: updateWorkflowStatus,
     onMutate: async (newStatus) => {
       await queryClient.cancelQueries({ queryKey: ['workflows'] });
-      const previousWorkflows = queryClient.getQueryData<WorkflowSchema[]>(['workflows']);
-      if (previousWorkflows) {
-        queryClient.setQueryData(
-          ['workflows'],
-          previousWorkflows.map((wf) =>
-            wf.id === newStatus.id ? { ...wf, status: newStatus.status } : wf
-          )
-        );
-      }
+      const previousWorkflows = queryClient.getQueryData<WorkflowPagedResponse>(['workflows']);
+      
+      // We will refresh the page via invalidateQueries, local update of paged list is complex
       return { previousWorkflows };
     },
     onError: (err, newStatus, context) => {
@@ -121,9 +160,8 @@ export const useDeleteWorkflow = () => {
   return useMutation({
     mutationFn: deleteWorkflow,
     onSuccess: (_, deletedId) => {
-      queryClient.setQueryData(['workflows'], (old: WorkflowSchema[] = []) =>
-        old.filter((wf) => wf.id !== deletedId)
-      );
+      // Refresh the list from the server to get accurate groups
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
     },
   });
 };

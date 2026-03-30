@@ -22,7 +22,8 @@ import {
   BugPlay,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { saveWorkflowDefinition } from '@/services/workflowService';
+import { updateWorkflowDefinition } from '@/services/workflowService';
+import { toast } from 'sonner';
 
 export const WorkflowTopbar: React.FC = () => {
   const navigate = useNavigate();
@@ -47,10 +48,15 @@ export const WorkflowTopbar: React.FC = () => {
 
   const handleSave = async () => {
     const store = useWorkflowStore.getState();
-    const { nodes, edges, workflowName } = store;
+    const { nodes, edges, workflowName, workflowId } = store;
+
+    if (!workflowId) {
+      toast.error("Lỗi Workflow", { description: "Không tìm thấy Workflow ID. Thao tác lưu thất bại." });
+      return;
+    }
 
     if (nodes.length === 0) {
-      alert("Không có Node nào trên Canvas để lưu!");
+      toast.warning("Cảnh báo", { description: "Không có Node nào trên Canvas để lưu!" });
       return;
     }
 
@@ -78,27 +84,28 @@ export const WorkflowTopbar: React.FC = () => {
       });
 
       const payload = {
+        Id: workflowId,
         Name: workflowName || 'Untitled Workflow',
         DefinitionJson: {
           Steps: steps,
           Transitions: transitions,
         },
-        UiJson: JSON.stringify({
+        UiJson: {
           nodes,
           edges,
-        })
+        }
       };
 
-      const result = await saveWorkflowDefinition(payload);
+      const result = await updateWorkflowDefinition(payload);
       if (result && result.success) {
-        alert("Lưu định nghĩa Workflow thành công!");
+        toast.success("Lưu thành công", { description: "Định nghĩa Workflow đã được cập nhật." });
         markSaved();
       } else {
-        alert("Lưu Workflow thất bại. Vui lòng thử lại.");
+        toast.error("Lưu thất bại", { description: "Có lỗi xảy ra, vui lòng thử lại." });
       }
     } catch (error: any) {
       console.error("Save workflow error:", error);
-      alert(error?.message || "Đã xảy ra lỗi khi lưu Workflow.");
+      toast.error("Lỗi hệ thống", { description: error?.message || "Đã xảy ra lỗi khi lưu Workflow." });
     } finally {
       setIsSaving(false);
     }
@@ -113,7 +120,7 @@ export const WorkflowTopbar: React.FC = () => {
     const startNode = nodes.find((n) => n.type === 'startNode');
 
     if (!startNode) {
-      alert("No Start Node found on the canvas!");
+      toast.warning("Thiếu Start Node", { description: "Không tìm thấy Start Node trên Canvas!" });
       return;
     }
 

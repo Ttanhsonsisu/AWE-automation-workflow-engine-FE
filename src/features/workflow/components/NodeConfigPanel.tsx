@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { usePluginStore } from '@/stores/pluginStore';
-import { catalogToNodeCategories, getNodeDefinition } from '../nodeDefinitions';
+import { catalogToNodeCategories, getNodeDefinition, resolveIcon, categoryColorMap } from '../nodeDefinitions';
 import { usePluginDetail } from '../hooks/usePluginDetail';
 import { usePackageVersions } from '../hooks/usePackageVersions';
 
@@ -111,36 +111,53 @@ function resolveProperty(
   prop: JsonSchemaProperty,
   definitions: Record<string, JsonSchemaProperty>
 ): JsonSchemaProperty {
-  // Case 1: oneOf with $ref — inline the referenced definition
+  // Case 1: direct $ref on the property
+  if (prop.$ref) {
+    const refName = prop.$ref.replace('#/definitions/', '');
+    const definition = definitions[refName];
+    if (definition) {
+      return resolveProperty(key, {
+        ...definition,
+        title: definition.title || key,
+      }, definitions);
+    }
+  }
+
+  // Case 2: oneOf with $ref — inline the referenced definition
   if (prop.oneOf && prop.oneOf.length > 0) {
     for (const option of prop.oneOf) {
       if (option.$ref) {
         const refName = option.$ref.replace('#/definitions/', '');
         const definition = definitions[refName];
         if (definition) {
-          return {
+          return resolveProperty(key, {
             ...definition,
             title: definition.title || key,
             'x-nullable': prop['x-nullable'],
-          };
+          }, definitions);
         }
       }
     }
   }
 
-  // Case 2: direct $ref on the property
-  if (prop.$ref) {
-    const refName = prop.$ref.replace('#/definitions/', '');
-    const definition = definitions[refName];
-    if (definition) {
-      return {
-        ...definition,
-        title: definition.title || key,
-      };
+  // Case 3: Recursive Object properties
+  if (prop.type === 'object' && prop.properties) {
+    const resolvedProps: Record<string, JsonSchemaProperty> = {};
+    for (const [k, p] of Object.entries(prop.properties)) {
+      resolvedProps[k] = resolveProperty(k, p, definitions);
     }
+    return { ...prop, properties: resolvedProps as any };
   }
 
-  // Case 3: no ref, return as-is
+  // Case 4: Recursive Array items
+  if (prop.type === 'array' && prop.items) {
+    const items = Array.isArray(prop.items) 
+      ? prop.items.map(item => resolveProperty(key + 'Item', item, definitions))
+      : resolveProperty(key + 'Item', prop.items, definitions);
+    return { ...prop, items: items as any };
+  }
+
+  // Case 5: No more refs, return as-is
   return prop;
 }
 
@@ -269,13 +286,23 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const [nodeDescription, setNodeDescription] = useState('');
   const [stepId, setStepId] = useState('');
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
+  const [localFormData, setLocalFormData] = useState<Record<string, unknown>>({});
 
   // ── Plugin Detail API (with React Query caching) ──
   const pluginName = node?.data.pluginMetadata?.name as string | undefined;
   const executionMode = (node?.data.pluginMetadata?.executionMode as string) || def?.executionMode;
   const packageId = (node?.data.pluginMetadata?.packageId as string) || def?.packageId;
-  const currentVersion = selectedVersion || (node?.data.pluginMetadata?.version as string) || def?.activeVersion || 'Built-in';
+  const nodeVersion = (node?.data.pluginMetadata?.version as string) || '';
+  const currentVersion = selectedVersion || nodeVersion || def?.activeVersion || 'Built-in';
   const isBuiltIn = executionMode === 'BuiltIn' || currentVersion === 'Built-in';
+
+  // Only use sha256 to fetch if we are still on the initially loaded version 
+  // (user hasn't actively switched selectedVersion to something different)
+  const isOriginalVersion = !selectedVersion || selectedVersion === nodeVersion;
+  
+  const executionMetadata = node?.data.pluginMetadata?.executionMetadata as Record<string, unknown> | undefined;
+  // Support both PascalCase and camelCase for Sha256
+  const sha256 = isOriginalVersion ? ((executionMetadata?.Sha256 as string | undefined) || (executionMetadata?.sha256 as string | undefined)) : undefined;
 
   const {
     data: pluginDetail,
@@ -285,7 +312,8 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
     pluginName,
     executionMode,
     packageId,
-    isBuiltIn ? undefined : currentVersion
+    isBuiltIn ? undefined : currentVersion,
+    sha256
   );
 
   // ── Package Versions API ──
@@ -303,22 +331,39 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
 
   // ── Resolve schemas: API detail > catalog fallback ──
   const inputSchema = useMemo<JsonSchema>(() => {
-    if (pluginDetail?.inputSchema) return pluginDetail.inputSchema;
-    return (node?.data.pluginMetadata?.inputSchema as JsonSchema) || (def?.inputSchema as unknown as JsonSchema) || {};
+    // If detail is loading, we SHOULD NOT flip to empty {} if we already had a fallback from node metadata or catalog.
+    // This prevents RJSF from clearing data because properties temporarily disappeared.
+    const fallback = (node?.data.pluginMetadata?.inputSchema as JsonSchema) || (def?.inputSchema as unknown as JsonSchema) || {};
+    if (!pluginDetail) return fallback;
+    return pluginDetail.inputSchema || fallback;
   }, [pluginDetail, node, def]);
 
   const outputSchema = useMemo<JsonSchema>(() => {
-    if (pluginDetail?.outputSchema) return pluginDetail.outputSchema;
-    return (node?.data.pluginMetadata?.outputSchema as JsonSchema) || (def?.outputSchema as unknown as JsonSchema) || {};
+    const fallback = (node?.data.pluginMetadata?.outputSchema as JsonSchema) || (def?.outputSchema as unknown as JsonSchema) || {};
+    if (!pluginDetail) return fallback;
+    return pluginDetail.outputSchema || fallback;
   }, [pluginDetail, node, def]);
 
   const hasInputFields = inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
   const hasOutputFields = outputSchema?.properties && Object.keys(outputSchema.properties).length > 0;
 
-  // ── Get form data from store ──
-  const formData = useMemo(() => {
-    return (node?.data.config?.inputs as Record<string, unknown>) || {};
-  }, [node]);
+  // ── Sync metadata from individual API detail once loaded ──
+  useEffect(() => {
+    if (pluginDetail) {
+      // If nodeName is empty or just matches the technical type, update it to the displayName from API
+      if (!nodeName || nodeName === node?.data.pluginMetadata?.name) {
+        setNodeName(pluginDetail.displayName);
+      }
+      // If nodeDescription is empty, update it to the description from API
+      if (!nodeDescription && pluginDetail.description) {
+        setNodeDescription(pluginDetail.description);
+      }
+      // If node doesn't have a version yet, set it to the one from the API
+      if (!selectedVersion && pluginDetail.version) {
+        setSelectedVersion(pluginDetail.version);
+      }
+    }
+  }, [pluginDetail, node?.data.pluginMetadata?.name]);
 
   // ── RJSF schema conversion: resolve $ref/oneOf patterns from backend ──
   const rjsfSchema = useMemo(() => {
@@ -334,47 +379,43 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
       setNodeName((node.data.config?.nodeLabel || node.data.pluginMetadata?.displayName) || '');
       setNodeDescription((node.data.pluginMetadata?.description) || '');
       setStepId((node.data.config?.stepId as string) || node.id);
-      setSelectedVersion(
-        (node.data.pluginMetadata?.version as string) || def?.activeVersion || 'Built-in'
-      );
+      
+      // Crucial: only set selectedVersion to a fallback if the node itself has NO version
+      // This preserves our ability to detect "Original Version" for SHA-based lookups
+      setSelectedVersion((node.data.pluginMetadata?.version as string) || '');
+      
+      setLocalFormData((node.data.config?.inputs as Record<string, unknown>) || {});
     }
-  }, [node, def]);
+  }, [nodeId]); // Only reset when we switch to a different node
 
-  // ── RJSF onChange: update store ──
+  // ── RJSF onChange: update local state ──
   const handleFormChange = useCallback(
     (e: IChangeEvent) => {
-      if (!node) return;
-      updateNodeInputs(node.id, e.formData || {});
-
-      // Check validation: RJSF reports errors in the event
-      const isValid = !e.errors || e.errors.length === 0;
-      setNodeValidation(node.id, isValid);
+      setLocalFormData(e.formData || {});
     },
-    [node, updateNodeInputs, setNodeValidation]
+    []
   );
 
   // ── Version switching ──
   const handleVersionChangeRequest = useCallback((newVersion: string) => {
     if (newVersion === selectedVersion) return;
     // If there's existing input data, show confirmation
-    if (formData && Object.keys(formData).length > 0) {
+    if (localFormData && Object.keys(localFormData).length > 0) {
       setPendingVersion(newVersion);
     } else {
       // No data to lose, switch immediately
-      if (node) {
-        changeNodeVersion(node.id, newVersion);
-        setSelectedVersion(newVersion);
-      }
+      setSelectedVersion(newVersion);
+      setLocalFormData({});
     }
-  }, [selectedVersion, formData, node, changeNodeVersion]);
+  }, [selectedVersion, localFormData]);
 
   const confirmVersionSwitch = useCallback(() => {
-    if (pendingVersion && node) {
-      changeNodeVersion(node.id, pendingVersion);
+    if (pendingVersion) {
       setSelectedVersion(pendingVersion);
+      setLocalFormData({});
       setPendingVersion(null);
     }
-  }, [pendingVersion, node, changeNodeVersion]);
+  }, [pendingVersion]);
 
   // ── Save ──
   const handleSave = useCallback(() => {
@@ -390,17 +431,29 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
         ...node.data.config,
         nodeLabel: nodeName,
         stepId,
-        inputs: formData as Record<string, unknown>,
+        inputs: localFormData,
         isConfigured: true,
       },
+      uiState: {
+        ...node.data.uiState,
+        isValid: true,
+      }
     } as any);
     onClose();
-  }, [node, nodeName, stepId, nodeDescription, formData, selectedVersion, updateNodeData, onClose, pluginDetail]);
+  }, [node, nodeName, stepId, nodeDescription, localFormData, selectedVersion, updateNodeData, onClose, pluginDetail]);
+
+  // Resolve visual properties using API data as priority over catalog fallback
+  const Icon = useMemo(() => {
+    if (pluginDetail?.icon) return resolveIcon(pluginDetail.icon);
+    return def?.icon || Settings2;
+  }, [pluginDetail, def]);
+
+  const displayExecutionMode = (pluginDetail?.executionMode as string) || (node?.data?.pluginMetadata?.executionMode as string) || def?.executionMode || 'Unknown';
+  const categoryLabel = (pluginDetail?.category || node?.data?.pluginMetadata?.category || def?.category || 'General') as string;
+  const colors = categoryColorMap[categoryLabel] || { color: 'bg-slate-500', bgColor: 'bg-emerald-500/10' };
+  const displayNameDisplay = nodeName || pluginDetail?.displayName || node?.data?.pluginMetadata?.displayName || def?.label || 'Node';
 
   if (!node) return null;
-
-  const Icon = def?.icon || Settings2;
-  const displayExecutionMode = (node.data.executionMode as string) || def?.executionMode || 'Unknown';
 
   return (
     <>
@@ -412,14 +465,14 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
           {/* ━━━━━━━━ Header ━━━━━━━━ */}
           <div className="relative overflow-hidden">
             {/* Gradient accent bar */}
-            <div className={cn('absolute inset-x-0 top-0 h-1', def?.color || 'bg-slate-500')} />
+            <div className={cn('absolute inset-x-0 top-0 h-1', colors.color)} />
 
             <DialogHeader className="px-6 pt-6 pb-4">
               <div className="flex items-start gap-4">
                 {/* Icon */}
                 <div className={cn(
                   'size-12 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10',
-                  def?.color || 'bg-slate-500'
+                  colors.color
                 )}>
                   <Icon className="size-6 text-white" />
                 </div>
@@ -428,7 +481,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <DialogTitle className="text-lg font-bold leading-tight">
-                      {node.data.config?.nodeLabel || node.data.pluginMetadata?.displayName}
+                      {displayNameDisplay}
                     </DialogTitle>
                     <Badge
                       variant="outline"
@@ -439,13 +492,12 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                           : 'border-blue-500/30 text-blue-600 bg-blue-500/5'
                       )}
                     >
-                      <Cpu className="size-3 mr-1" />
                       {displayExecutionMode}
                     </Badge>
                   </div>
 
-                  <DialogDescription className="mt-1 text-sm leading-relaxed">
-                    {node.data.pluginMetadata?.description || 'Không có mô tả'}
+                  <DialogDescription className="mt-1 text-sm leading-relaxed line-clamp-2">
+                    {pluginDetail?.description || node.data.pluginMetadata?.description || 'Không có mô tả'}
                   </DialogDescription>
 
                   {/* Meta info chips */}
@@ -536,8 +588,8 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                         </div>
                         <div className="space-y-2 col-span-2">
                           <Label className="text-sm font-medium">Phiên bản</Label>
-                          <Select 
-                            value={selectedVersion} 
+                          <Select
+                            value={selectedVersion}
                             onValueChange={handleVersionChangeRequest}
                             disabled={isVersionsLoading}
                           >
@@ -584,7 +636,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                     </div>
 
                     {/* Dynamic Input Schema Fields via RJSF */}
-                    {isSchemaLoading && (
+                    {isSchemaLoading && !hasInputFields && (
                       <>
                         <Separator />
                         <div className="flex flex-col items-center justify-center py-10 text-center">
@@ -597,7 +649,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                       </>
                     )}
 
-                    {schemaError && !isSchemaLoading && (
+                    {schemaError && !isSchemaLoading && !hasInputFields && (
                       <>
                         <Separator />
                         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
@@ -612,11 +664,18 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                       </>
                     )}
 
-                    {!isSchemaLoading && !schemaError && hasInputFields && (
+                    {hasInputFields && (
                       <>
                         <Separator />
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
+                        <div className="space-y-4 relative">
+                          {/* Subtle loading overlay when refreshing schema */}
+                          {isSchemaLoading && (
+                            <div className="absolute inset-0 z-10 bg-background/20 backdrop-blur-[1px] flex items-start justify-center pt-10 pointer-events-none">
+                              <Loader2 className="size-6 text-primary animate-spin opacity-50" />
+                            </div>
+                          )}
+
+                          <div className={cn("flex items-center justify-between", isSchemaLoading && "opacity-50")}>
                             <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                               <Settings2 className="size-3.5" />
                               Tham số đầu vào
@@ -626,23 +685,25 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                             </Badge>
                           </div>
 
-                          <Form
-                            schema={rjsfSchema as Record<string, unknown>}
-                            formData={formData}
-                            onChange={handleFormChange}
-                            validator={validator}
-                            widgets={customWidgets}
-                            templates={customTemplates}
-                            liveValidate
-                            showErrorList={false}
-                            noHtml5Validate
-                            uiSchema={{
-                              'ui:submitButtonOptions': { norender: true },
-                            }}
-                          >
-                            {/* Hide default submit button */}
-                            <></>
-                          </Form>
+                          <div className={cn(isSchemaLoading && "opacity-50 grayscale-[0.2]")}>
+                            <Form
+                              schema={rjsfSchema as Record<string, unknown>}
+                              formData={localFormData}
+                              onChange={handleFormChange}
+                              validator={validator}
+                              widgets={customWidgets}
+                              templates={customTemplates}
+                              liveValidate
+                              showErrorList={false}
+                              noHtml5Validate
+                              uiSchema={{
+                                'ui:submitButtonOptions': { norender: true },
+                              }}
+                            >
+                              {/* Hide default submit button */}
+                              <></>
+                            </Form>
+                          </div>
                         </div>
                       </>
                     )}
@@ -766,7 +827,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                           Status: <span className="text-amber-400">WAITING</span>
                         </p>
                         <p className="text-zinc-400">
-                          Inputs: <span className="text-blue-400">{JSON.stringify(formData, null, 0) || 'null'}</span>
+                          Inputs: <span className="text-blue-400">{JSON.stringify(localFormData, null, 0) || 'null'}</span>
                         </p>
                         <p className="text-zinc-400">
                           Outputs: <span className="text-blue-400">null</span>

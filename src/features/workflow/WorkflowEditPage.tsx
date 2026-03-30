@@ -30,6 +30,9 @@ import {
 } from '@/components/ui/tooltip';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePluginStore } from '@/stores/pluginStore';
+import { hydrateWorkflowFromDefinition, identifyPendingPluginDetails } from './utils/workflowHydration';
+import { usePreloadPluginDetails } from './hooks/usePreloadPluginDetails';
 
 // Custom Nodes / Edges
 import { StartNode } from './components/nodes/StartNode';
@@ -68,7 +71,27 @@ const WorkflowCanvas: React.FC = () => {
     canvasMode,
   } = useWorkflowStore();
 
+  const { categories, hasFetched, isLoading: isCatalogLoading, fetchCatalog } = usePluginStore();
+
   const isExecutionMode = canvasMode === 'execution';
+
+  // Ensure plugin catalog is ready when entering edit page so node icon/style renders immediately.
+  useEffect(() => {
+    if (!hasFetched && !isCatalogLoading) {
+      fetchCatalog();
+    }
+  }, [hasFetched, isCatalogLoading, fetchCatalog]);
+
+  const handlePreloadProgress = useCallback((nodeId: string, status: 'fetching' | 'success' | 'error', error?: Error) => {
+    if (status === 'error') {
+      console.warn(`Failed to preload plugin detail for node ${nodeId}:`, error?.message);
+    }
+  }, []);
+
+  // Preload plugin details for DynamicDll nodes (so forms render instantly)
+  usePreloadPluginDetails(nodes, {
+    onProgress: handlePreloadProgress,
+  });
 
   // Fetch true definition from backend
   const { data: workflowDef, isLoading: isFetching } = useWorkflow(id || '');
@@ -76,60 +99,81 @@ const WorkflowCanvas: React.FC = () => {
   // Initialize workflow on mount or when API data changes
   useEffect(() => {
     if (id && workflowDef) {
-       let initialNodes = workflowDef.uiJson?.nodes || [];
-       let initialEdges = workflowDef.uiJson?.edges || [];
-       
-       // HYDRATION LOGIC: Fallback for workflows created via API without a UI Canvas (UiJson is null)
-       if (initialNodes.length === 0 && workflowDef.definition?.Steps?.length > 0) {
-          toast.info("Tái tạo giao diện", { description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..." });
-          
-          initialNodes = workflowDef.definition.Steps.map((step: any, index: number) => {
-            return {
-              id: `${step.Type || 'Node'}-${Math.random().toString(36).substring(7)}`,
-              type: index === 0 ? 'startNode' : 'actionNode',
-              position: { x: 350, y: 100 + index * 180 }, // Auto layout vertically
-              data: {
-                pluginMetadata: {
-                  name: step.Type,
-                  displayName: step.Type,
-                  category: 'Core/API',
-                  executionMode: step.ExecutionMode || 'BuiltIn',
-                },
-                config: {
-                  inputs: step.Inputs || {},
-                  stepId: step.Id,
-                  isConfigured: true, 
-                },
-                status: 'idle',
-                uiState: { isValid: true },
-              }
-            };
+      let initialNodes = workflowDef.uiJson?.nodes || [];
+      let initialEdges = workflowDef.uiJson?.edges || [];
+
+      // ─────────────────────────────────────────────────────────────
+      // HYDRATION LOGIC: Rebuild UI layout from backend Definition
+      // Target: workflows created via API without UiJson (null)
+      // ─────────────────────────────────────────────────────────────
+      if (initialNodes.length === 0 && workflowDef.definition?.Steps?.length > 0) {
+        console.log('[WorkflowEditPage] Triggering hydration for workflow without UiJson');
+        toast.info("Tái tạo giao diện", { 
+          description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..." 
+        });
+
+        try {
+          const hydrationResult = hydrateWorkflowFromDefinition(
+            workflowDef.definition.Steps,
+            workflowDef.definition.Transitions || [],
+            categories
+          );
+
+          initialNodes = hydrationResult.nodes;
+          initialEdges = hydrationResult.edges;
+
+          console.log('[WorkflowEditPage] Hydration complete:', {
+            nodeCount: initialNodes.length,
+            edgeCount: initialEdges.length,
           });
 
-          // Reconstruct Edges using the newly generated node IDs
-          const transitions = workflowDef.definition.Transitions || [];
-          if (transitions.length > 0) {
-            initialEdges = transitions.map((t: any, index: number) => {
-              const sourceNode = initialNodes.find((n: WorkflowNode) => n.data.config.stepId === t.Source);
-              const targetNode = initialNodes.find((n: WorkflowNode) => n.data.config.stepId === t.Target);
-              return {
-                id: `hydrated-edge-${index}`,
-                source: sourceNode?.id || t.Source,
-                target: targetNode?.id || t.Target,
-                type: 'customEdge'
-              };
-            });
+          // Log which nodes need plugin detail fetching
+          const pendingDetails = identifyPendingPluginDetails(initialNodes);
+          if (pendingDetails.length > 0) {
+            console.log('[WorkflowEditPage] Nodes pending plugin detail:', pendingDetails);
           }
-       }
-       
-       setWorkflow(id, workflowDef.name || `Workflow ${id}`, initialNodes, initialEdges);
+        } catch (error) {
+          console.error('[WorkflowEditPage] Hydration failed:', error);
+          toast.error("Lỗi tái tạo giao diện", {
+            description: "Không thể tái tạo giao diện từ dữ liệu. Vui lòng kiểm tra log."
+          });
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // SYNC LOGIC: Ensure nodes mirror the true backend state
+      // Updates execution metadata, versions from latest backend data
+      // ─────────────────────────────────────────────────────────────
+      const backendSteps = workflowDef.definition?.Steps || [];
+      if (initialNodes.length > 0 && backendSteps.length > 0) {
+        initialNodes = initialNodes.map((node: any) => {
+          const matchingStep = backendSteps.find((s: any) => s.Id === node.id || s.Id === node.data.config?.stepId);
+          if (matchingStep) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                pluginMetadata: {
+                  ...node.data.pluginMetadata,
+                  executionMode: matchingStep.ExecutionMode || node.data.pluginMetadata?.executionMode,
+                  executionMetadata: matchingStep.ExecutionMetadata || matchingStep.executionMetadata || node.data.pluginMetadata?.executionMetadata,
+                  version: matchingStep.Version || matchingStep.version || node.data.pluginMetadata?.version,
+                }
+              }
+            };
+          }
+          return node;
+        });
+      }
+
+      setWorkflow(id, workflowDef.name || `Workflow ${id}`, initialNodes, initialEdges);
     }
-    
+
     return () => {
       // Clear store entirely when completely leaving this workflow edit session to ensure 100% clean state for next visits
       setWorkflow('', 'Untitled Workflow', [], []);
     };
-  }, [id, workflowDef, setWorkflow]);
+  }, [id, workflowDef, setWorkflow, categories]);
 
 
   // ── Drag & Drop from Node Library ──
@@ -249,10 +293,10 @@ const WorkflowCanvas: React.FC = () => {
   if (isFetching && !workflowDef) {
     return (
       <div className="flex h-screen items-center justify-center p-4">
-         <div className="flex flex-col items-center gap-3">
-           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-           <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading workflow...</p>
-         </div>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading workflow...</p>
+        </div>
       </div>
     );
   }

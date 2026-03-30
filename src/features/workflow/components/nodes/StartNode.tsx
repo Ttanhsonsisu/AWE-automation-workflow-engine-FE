@@ -7,12 +7,14 @@ import { catalogToNodeCategories, getNodeDefinition } from '../../nodeDefinition
 import { CheckCircle2, Play, CircleDot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export const StartNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selected }) => {
-  const { categories } = usePluginStore();
+  const { categories, hasFetched, isLoading } = usePluginStore();
   const nodeGroups = catalogToNodeCategories(categories);
   const def = getNodeDefinition(data.pluginMetadata?.name as string, nodeGroups);
   const Icon = def?.icon || Play;
+  const showCatalogSkeleton = !hasFetched || isLoading;
 
   return (
     <BaseNode id={id} data={data} selected={selected} isStartNode>
@@ -28,13 +30,26 @@ export const StartNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selecte
       <div className="flex flex-col p-4 w-[260px] relative top-1">
         <div className="flex items-center gap-3">
           <div className={cn('size-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-primary/20 bg-primary/10')}>
-            <Icon className="size-5 text-primary" />
+            {showCatalogSkeleton ? (
+              <Skeleton className="size-5 rounded-sm" />
+            ) : (
+              <Icon className="size-5 text-primary" />
+            )}
           </div>
           <div className="flex flex-col flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-foreground truncate">{data.config?.nodeLabel || data.pluginMetadata?.displayName}</h3>
-            <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-              {data.pluginMetadata?.description}
-            </p>
+            {showCatalogSkeleton ? (
+              <>
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24 mt-1" />
+              </>
+            ) : (
+              <>
+                <h3 className="text-sm font-semibold text-foreground truncate">{data.config?.nodeLabel || data.pluginMetadata?.displayName}</h3>
+                <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                  {data.pluginMetadata?.description}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

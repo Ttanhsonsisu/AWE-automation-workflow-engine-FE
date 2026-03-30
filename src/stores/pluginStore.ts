@@ -27,6 +27,8 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
   fetchCatalog: async () => {
     // Skip if already loading
     if (get().isLoading) return;
+    // Skip if catalog already fetched
+    if (get().hasFetched) return;
 
     set({ isLoading: true, error: null });
 

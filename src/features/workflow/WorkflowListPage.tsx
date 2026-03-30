@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, MoreHorizontal, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText } from 'lucide-react';
+import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock } from 'lucide-react';
 
 import type { WorkflowGroup, WorkflowVersion } from '@/types';
 import {
@@ -272,34 +272,37 @@ const WorkflowListPage: React.FC = () => {
     },
     {
       id: 'actions',
+      header: 'Actions',
       cell: ({ row }) => {
         const wf = row.original.activeVersion;
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[160px] bg-card border-border shadow-xl">
-              <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wider">Version Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigate(`/workflows/${wf.id}/edit`)} className="cursor-pointer gap-2 group focus:bg-accent focus:text-accent-foreground">
-                <Edit className="size-3.5 group-hover:text-primary transition-colors" /> Edit Version
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(wf.id)} className="cursor-pointer gap-2">
-                <Copy className="size-3.5 text-muted-foreground" /> Copy Version ID
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => deleteWorkflowMutation.mutate(wf.id)}
-                className="cursor-pointer text-destructive focus:bg-destructive focus:text-destructive-foreground gap-2 group"
-                disabled={deleteWorkflowMutation.isPending}
-              >
-                <Trash className="size-3.5 group-hover:scale-110 transition-transform" /> Delete Version
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <Button 
+              title="Edit Workflow Canvas"
+              variant="outline" 
+              size="sm" 
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-foreground hover:text-primary transition-colors border-border/50"
+              onClick={() => navigate(`/workflows/${wf.id}/edit`)}
+            >
+              <Edit className="size-[13px]" /> Edit
+            </Button>
+            <Button 
+              title="Run Workflow"
+              variant="outline" 
+              size="sm" 
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors border-border/50"
+            >
+              <Play className="size-[13px]" /> Run
+            </Button>
+            <Button 
+              title="View History"
+              variant="outline" 
+              size="sm" 
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-muted-foreground hover:text-foreground transition-colors border-border/50"
+            >
+              <Clock className="size-[13px]" /> History
+            </Button>
+          </div>
         );
       },
     },

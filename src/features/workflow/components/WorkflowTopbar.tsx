@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,6 +45,7 @@ export const WorkflowTopbar: React.FC = () => {
     clearExecutionLogs,
   } = useWorkflowStore();
 
+  const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = React.useState(false);
 
   const handleSave = async () => {
@@ -100,6 +102,10 @@ export const WorkflowTopbar: React.FC = () => {
       if (result && result.success) {
         toast.success("Lưu thành công", { description: "Định nghĩa Workflow đã được cập nhật." });
         markSaved();
+        
+        // Purge react-query cache completely to force hard-fetch on re-edit
+        queryClient.removeQueries({ queryKey: ['workflow', workflowId] });
+        queryClient.invalidateQueries({ queryKey: ['workflows'] });
       } else {
         toast.error("Lưu thất bại", { description: "Có lỗi xảy ra, vui lòng thử lại." });
       }

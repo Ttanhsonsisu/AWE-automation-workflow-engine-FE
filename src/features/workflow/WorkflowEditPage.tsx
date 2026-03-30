@@ -14,6 +14,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { useWorkflow } from '@/api/workflows';
+import { toast } from 'sonner';
+
 import { useWorkflowStore, type WorkflowNode, type NodeCategory } from '@/stores/workflowStore';
 import { WorkflowTopbar } from './components/WorkflowTopbar';
 import { NodeLibrarySheet } from './components/NodeLibrarySheet';
@@ -67,80 +70,67 @@ const WorkflowCanvas: React.FC = () => {
 
   const isExecutionMode = canvasMode === 'execution';
 
-  // Initialize demo workflow on mount
+  // Fetch true definition from backend
+  const { data: workflowDef, isLoading: isFetching } = useWorkflow(id || '');
+
+  // Initialize workflow on mount or when API data changes
   useEffect(() => {
-    if (id) {
-      const demoNodes: WorkflowNode[] = [
-        {
-          id: 'trigger-1',
-          type: 'startNode',
-          position: { x: 300, y: 50 },
-          data: {
-            pluginMetadata: {
-              name: 'webhook_trigger',
-              displayName: 'Webhook',
-              category: 'trigger',
-              description: 'Listen for incoming requests',
-            },
-            config: {
-              inputs: {},
-              isConfigured: true,
-              stepId: 'Step_1_Start',
-            },
-            uiState: { isValid: true },
-            status: 'idle',
-          },
-        },
-        {
-          id: 'action-1',
-          type: 'actionNode',
-          position: { x: 300, y: 250 },
-          data: {
-            pluginMetadata: {
-              name: 'http_request',
-              displayName: 'HTTP Request',
-              category: 'api',
-              description: 'Call external API',
-            },
-            config: {
-              inputs: {},
-              isConfigured: false,
-              stepId: 'Step_2_Action1',
-            },
-            uiState: { isValid: false },
-            status: 'idle',
-          },
-        },
-        {
-          id: 'action-2',
-          type: 'actionNode',
-          position: { x: 300, y: 450 },
-          data: {
-            pluginMetadata: {
-              name: 'send_email',
-              displayName: 'Send Email',
-              category: 'action',
-              description: 'Notify on success',
-            },
-            config: {
-              inputs: {},
-              isConfigured: true,
-              stepId: 'Step_3_Action2',
-            },
-            uiState: { isValid: true },
-            status: 'idle',
-          },
-        },
-      ];
+    if (id && workflowDef) {
+       let initialNodes = workflowDef.uiJson?.nodes || [];
+       let initialEdges = workflowDef.uiJson?.edges || [];
+       
+       // HYDRATION LOGIC: Fallback for workflows created via API without a UI Canvas (UiJson is null)
+       if (initialNodes.length === 0 && workflowDef.definition?.Steps?.length > 0) {
+          toast.info("Tái tạo giao diện", { description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..." });
+          
+          initialNodes = workflowDef.definition.Steps.map((step: any, index: number) => {
+            return {
+              id: `${step.Type || 'Node'}-${Math.random().toString(36).substring(7)}`,
+              type: index === 0 ? 'startNode' : 'actionNode',
+              position: { x: 350, y: 100 + index * 180 }, // Auto layout vertically
+              data: {
+                pluginMetadata: {
+                  name: step.Type,
+                  displayName: step.Type,
+                  category: 'Core/API',
+                  executionMode: step.ExecutionMode || 'BuiltIn',
+                },
+                config: {
+                  inputs: step.Inputs || {},
+                  stepId: step.Id,
+                  isConfigured: true, 
+                },
+                status: 'idle',
+                uiState: { isValid: true },
+              }
+            };
+          });
 
-      const demoEdges = [
-        { id: 'e-t1-a1', source: 'trigger-1', target: 'action-1', type: 'customEdge' },
-        { id: 'e-a1-a2', source: 'action-1', target: 'action-2', type: 'customEdge' },
-      ];
-
-      setWorkflow(id, `Workflow ${id}`, demoNodes, demoEdges);
+          // Reconstruct Edges using the newly generated node IDs
+          const transitions = workflowDef.definition.Transitions || [];
+          if (transitions.length > 0) {
+            initialEdges = transitions.map((t: any, index: number) => {
+              const sourceNode = initialNodes.find((n: WorkflowNode) => n.data.config.stepId === t.Source);
+              const targetNode = initialNodes.find((n: WorkflowNode) => n.data.config.stepId === t.Target);
+              return {
+                id: `hydrated-edge-${index}`,
+                source: sourceNode?.id || t.Source,
+                target: targetNode?.id || t.Target,
+                type: 'customEdge'
+              };
+            });
+          }
+       }
+       
+       setWorkflow(id, workflowDef.name || `Workflow ${id}`, initialNodes, initialEdges);
     }
-  }, [id, setWorkflow]);
+    
+    return () => {
+      // Clear store entirely when completely leaving this workflow edit session to ensure 100% clean state for next visits
+      setWorkflow('', 'Untitled Workflow', [], []);
+    };
+  }, [id, workflowDef, setWorkflow]);
+
 
   // ── Drag & Drop from Node Library ──
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -256,7 +246,16 @@ const WorkflowCanvas: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
+  if (isFetching && !workflowDef) {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+         <div className="flex flex-col items-center gap-3">
+           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+           <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading workflow...</p>
+         </div>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden relative">
       <WorkflowTopbar />

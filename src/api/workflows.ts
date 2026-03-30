@@ -70,6 +70,20 @@ export const useWorkflows = (params: WorkflowFilterParams = {}) => {
   });
 };
 
+// ── GET Single Workflow Definition by ID ──
+export const fetchWorkflowById = async (id: string): Promise<any> => {
+  const { data } = await apiClient.get(`/workflows/${id}`);
+  return data.data || data;
+};
+
+export const useWorkflow = (id: string) => {
+  return useQuery({
+    queryKey: ['workflow', id],
+    queryFn: () => fetchWorkflowById(id),
+    enabled: !!id,
+  });
+};
+
 // ── CREATE Workflow ──
 import { createWorkflowDefinition } from '@/services/workflowService';
 import type { WorkflowGroup, WorkflowPagedResponse, WorkflowVersion } from '@/types';

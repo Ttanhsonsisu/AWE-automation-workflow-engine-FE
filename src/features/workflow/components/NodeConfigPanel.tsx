@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,22 +7,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+
 import {
   Tooltip,
   TooltipContent,
@@ -36,22 +28,17 @@ import { usePluginDetail } from '../hooks/usePluginDetail';
 import { usePackageVersions } from '../hooks/usePackageVersions';
 
 import { cn } from '@/lib/utils';
+import { OutputMappingSidebar, SIDEBAR_WIDTH } from './OutputMappingSidebar';
 import {
   Save,
-  Terminal,
   Settings2,
   Info,
-  Braces,
-  ArrowRightLeft,
   Package,
-  Cpu,
-  Hash,
-  Copy,
   ExternalLink,
   AlertTriangle,
-  CheckCircle2,
   Loader2,
   AlertCircle,
+  Settings,
 } from 'lucide-react';
 import type { JsonSchema, JsonSchemaProperty } from '@/types/plugin';
 
@@ -151,7 +138,7 @@ function resolveProperty(
 
   // Case 4: Recursive Array items
   if (prop.type === 'array' && prop.items) {
-    const items = Array.isArray(prop.items) 
+    const items = Array.isArray(prop.items)
       ? prop.items.map(item => resolveProperty(key + 'Item', item, definitions))
       : resolveProperty(key + 'Item', prop.items, definitions);
     return { ...prop, items: items as any };
@@ -169,61 +156,6 @@ interface NodeConfigPanelProps {
   onClose: () => void;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Output Schema Preview
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function getPropertyIcon(prop: JsonSchemaProperty) {
-  if (prop.enum) return import('lucide-react').then((m) => m.List);
-  if (prop.type === 'integer' || prop.type === 'number') return Hash;
-  if (prop.type === 'boolean') return import('lucide-react').then((m) => m.ToggleLeft);
-  return Hash;
-}
-
-const OutputSchemaPreview: React.FC<{ schema: JsonSchema }> = ({ schema }) => {
-  if (!schema?.properties || Object.keys(schema.properties).length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border/50 bg-muted/20 p-6 text-center">
-        <Braces className="size-8 text-muted-foreground/30 mx-auto mb-2" />
-        <p className="text-sm text-muted-foreground/60">Không có output schema</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {Object.entries(schema.properties).map(([key, prop]) => (
-        <div
-          key={key}
-          className="flex items-center gap-3 px-4 py-3 rounded-lg bg-card/60 border border-border/40"
-        >
-          <div className="size-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-            <Hash className="size-4 text-emerald-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-mono font-medium text-foreground">{key}</span>
-              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 font-mono border-muted-foreground/20 text-muted-foreground">
-                {prop.type}
-              </Badge>
-            </div>
-            {prop.title && (
-              <p className="text-[11px] text-muted-foreground mt-0.5">{prop.title}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            className="p-1.5 rounded-md hover:bg-accent transition-colors"
-            title={`Copy: {{Steps.NodeName.Output.${key}}}`}
-            onClick={() => navigator.clipboard.writeText(`{{Steps.${'NodeName'}.Output.${key}}}`)}
-          >
-            <Copy className="size-3.5 text-muted-foreground" />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Version Switch Confirmation Dialog
@@ -267,9 +199,6 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const {
     nodes,
     updateNodeData,
-    updateNodeInputs,
-    setNodeValidation,
-    changeNodeVersion,
   } = useWorkflowStore();
   const { categories } = usePluginStore();
   const node = nodes.find((n) => n.id === nodeId);
@@ -285,8 +214,11 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const [nodeName, setNodeName] = useState('');
   const [nodeDescription, setNodeDescription] = useState('');
   const [stepId, setStepId] = useState('');
+  const [maxRetries, setMaxRetries] = useState<number | ''>('');
+  const [enableRetry, setEnableRetry] = useState(false);
   const [pendingVersion, setPendingVersion] = useState<string | null>(null);
   const [localFormData, setLocalFormData] = useState<Record<string, unknown>>({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Plugin Detail API (with React Query caching) ──
   const pluginName = node?.data.pluginMetadata?.name as string | undefined;
@@ -299,7 +231,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   // Only use sha256 to fetch if we are still on the initially loaded version 
   // (user hasn't actively switched selectedVersion to something different)
   const isOriginalVersion = !selectedVersion || selectedVersion === nodeVersion;
-  
+
   const executionMetadata = node?.data.pluginMetadata?.executionMetadata as Record<string, unknown> | undefined;
   // Support both PascalCase and camelCase for Sha256
   const sha256 = isOriginalVersion ? ((executionMetadata?.Sha256 as string | undefined) || (executionMetadata?.sha256 as string | undefined)) : undefined;
@@ -338,14 +270,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
     return pluginDetail.inputSchema || fallback;
   }, [pluginDetail, node, def]);
 
-  const outputSchema = useMemo<JsonSchema>(() => {
-    const fallback = (node?.data.pluginMetadata?.outputSchema as JsonSchema) || (def?.outputSchema as unknown as JsonSchema) || {};
-    if (!pluginDetail) return fallback;
-    return pluginDetail.outputSchema || fallback;
-  }, [pluginDetail, node, def]);
-
   const hasInputFields = inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
-  const hasOutputFields = outputSchema?.properties && Object.keys(outputSchema.properties).length > 0;
 
   // ── Sync metadata from individual API detail once loaded ──
   useEffect(() => {
@@ -379,11 +304,20 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
       setNodeName((node.data.config?.nodeLabel || node.data.pluginMetadata?.displayName) || '');
       setNodeDescription((node.data.pluginMetadata?.description) || '');
       setStepId((node.data.config?.stepId as string) || node.id);
-      
+
+      const initialMaxRetries = (node.data.config?.maxRetries as number);
+      if (initialMaxRetries !== undefined && initialMaxRetries > 0) {
+        setEnableRetry(true);
+        setMaxRetries(initialMaxRetries);
+      } else {
+        setEnableRetry(false);
+        setMaxRetries('');
+      }
+
       // Crucial: only set selectedVersion to a fallback if the node itself has NO version
       // This preserves our ability to detect "Original Version" for SHA-based lookups
       setSelectedVersion((node.data.pluginMetadata?.version as string) || '');
-      
+
       setLocalFormData((node.data.config?.inputs as Record<string, unknown>) || {});
     }
   }, [nodeId]); // Only reset when we switch to a different node
@@ -432,6 +366,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
         nodeLabel: nodeName,
         stepId,
         inputs: localFormData,
+        maxRetries: enableRetry && maxRetries !== '' ? Number(maxRetries) : undefined,
         isConfigured: true,
       },
       uiState: {
@@ -459,233 +394,176 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
     <>
       <Dialog open={!!nodeId} onOpenChange={(open) => !open && onClose()}>
         <DialogContent
-          showCloseButton
-          className="sm:max-w-[780px] max-h-[85vh] p-0 flex flex-col overflow-hidden gap-0"
+          className={cn(
+            'max-h-[90vh] p-0 flex flex-col overflow-hidden gap-0 shadow-2xl border-border/40 transition-all duration-300',
+            sidebarOpen ? 'sm:max-w-[1210px]' : 'sm:max-w-[850px]'
+          )}
         >
-          {/* ━━━━━━━━ Header ━━━━━━━━ */}
-          <div className="relative overflow-hidden">
-            {/* Gradient accent bar */}
-            <div className={cn('absolute inset-x-0 top-0 h-1', colors.color)} />
+          {/* ━━━━━━━━ Relative wrapper for sidebar overlay ━━━━━━━━ */}
+          <div className="relative flex flex-col flex-1 min-h-0">
+            {/* Output Mapping Sidebar */}
+            {nodeId && (
+              <OutputMappingSidebar
+                nodeId={nodeId}
+                isOpen={sidebarOpen}
+                onToggle={() => setSidebarOpen(!sidebarOpen)}
+              />
+            )}
+            {/* ━━━━━━━━ Main content area — shifts right when sidebar is open ━━━━━━━━ */}
+            <div
+              className="flex flex-col flex-1 min-h-0 transition-all duration-300"
+              style={{ paddingLeft: sidebarOpen ? `${SIDEBAR_WIDTH}px` : '0px' }}
+            >
+              {/* ━━━━━━━━ Compact Top Bar (replaces old heavy header) ━━━━━━━━ */}
+              <div className="relative shrink-0">
+                {/* Thin accent gradient */}
+                <div className={cn('absolute inset-x-0 top-0 h-0.5 z-10', colors.color)} />
 
-            <DialogHeader className="px-6 pt-6 pb-4">
-              <div className="flex items-start gap-4">
-                {/* Icon */}
-                <div className={cn(
-                  'size-12 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10',
-                  colors.color
-                )}>
-                  <Icon className="size-6 text-white" />
-                </div>
-
-                {/* Title & Meta */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <DialogTitle className="text-lg font-bold leading-tight">
-                      {displayNameDisplay}
-                    </DialogTitle>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'text-[10px] font-mono px-2 py-0 h-5',
-                        displayExecutionMode === 'BuiltIn'
-                          ? 'border-emerald-500/30 text-emerald-600 bg-emerald-500/5'
-                          : 'border-blue-500/30 text-blue-600 bg-blue-500/5'
-                      )}
-                    >
-                      {displayExecutionMode}
-                    </Badge>
+                <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-4">
+                  {/* Left: Icon + Node type label */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={cn(
+                      'size-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg',
+                      colors.color
+                    )}>
+                      <Icon className="size-4.5 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-base font-bold text-foreground truncate leading-tight">
+                        {displayNameDisplay}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground/70 font-medium truncate">
+                        {categoryLabel} · {displayExecutionMode}
+                      </p>
+                    </div>
                   </div>
 
-                  <DialogDescription className="mt-1 text-sm leading-relaxed line-clamp-2">
-                    {pluginDetail?.description || node.data.pluginMetadata?.description || 'Không có mô tả'}
-                  </DialogDescription>
-
-                  {/* Meta info chips */}
-                  <div className="flex items-center gap-3 mt-2.5 flex-wrap">
-                    <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
-                      <Package className="size-3" />
-                      <span className="font-mono">{node.data.pluginMetadata?.category as string}</span>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
-                      <Hash className="size-3" />
-                      <span className="font-mono truncate max-w-[140px]">{node.id}</span>
-                    </div>
-                    {packageId && (
-                      <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 rounded-md px-2 py-1">
-                        <ExternalLink className="size-3" />
-                        <span className="font-mono truncate max-w-[120px]">{(packageId as string).slice(0, 8)}...</span>
-                      </div>
-                    )}
-                  </div>
+                  {/* Right: Doc button */}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 rounded-lg border-border/50 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 shrink-0"
+                        >
+                          <ExternalLink className="size-3.5" />
+                          <span className="text-xs font-medium">Tài liệu</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        Xem tài liệu hướng dẫn cho node này
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
-            </DialogHeader>
-          </div>
 
-          <Separator />
+              <Separator className="shrink-0 bg-border/60" />
 
-          {/* ━━━━━━━━ Body with Tabs ━━━━━━━━ */}
-          <Tabs defaultValue="parameters" className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-6 pt-3">
-              <TabsList className="w-full grid grid-cols-4 bg-muted/40 h-10">
-                <TabsTrigger value="parameters" className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                  <Settings2 className="size-3.5" />
-                  Cài đặt
-                </TabsTrigger>
-                <TabsTrigger value="output" className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                  <ArrowRightLeft className="size-3.5" />
-                  Output
-                </TabsTrigger>
-                <TabsTrigger value="advanced" className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                  <Braces className="size-3.5" />
-                  Nâng cao
-                </TabsTrigger>
-                <TabsTrigger value="logs" className="text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                  <Terminal className="size-3.5" />
-                  Logs
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            <ScrollArea className="flex-1 min-h-0">
-              <div className="px-6 py-5">
-                {/* ──── Tab: Parameters (Input Schema) ──── */}
-                <TabsContent value="parameters" className="m-0 focus-visible:outline-none">
-                  <div className="space-y-6">
-                    {/* Node general settings */}
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {/* ━━━━━━━━ Scrollable Content ━━━━━━━━ */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                <div className="px-6 py-6 space-y-8 pb-10">
+                  {/* ──── Section: General Information (only Step ID + Display Name) ──── */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 group">
+                      <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary transition-transform group-hover:scale-110">
                         <Info className="size-3.5" />
-                        Thông tin chung
                       </div>
+                      <h3 className="text-sm font-semibold text-foreground">Thông tin chung</h3>
+                    </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Tên Node</Label>
-                          <Input
-                            value={nodeName}
-                            onChange={(e) => setNodeName(e.target.value)}
-                            className="bg-card/80 border-border/60 hover:border-border transition-colors h-10"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium flex gap-2">
-                            Step ID
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Info className="size-3.5 text-muted-foreground mt-0.5" />
-                                </TooltipTrigger>
-                                <TooltipContent>Định danh duy nhất của Node khi chạy API</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </Label>
-                          <Input
-                            value={stepId}
-                            onChange={(e) => setStepId(e.target.value.replace(/\s/g, '_'))}
-                            className="bg-card/80 border-border/60 hover:border-border transition-colors h-10 font-mono text-sm"
-                          />
-                        </div>
-                        <div className="space-y-2 col-span-2">
-                          <Label className="text-sm font-medium">Phiên bản</Label>
-                          <Select
-                            value={selectedVersion}
-                            onValueChange={handleVersionChangeRequest}
-                            disabled={isVersionsLoading}
-                          >
-                            <SelectTrigger className="bg-card/80 border-border/60 hover:border-border transition-colors h-10">
-                              <SelectValue placeholder="Chọn phiên bản..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {isVersionsLoading ? (
-                                <div className="flex items-center gap-2 p-2">
-                                  <Loader2 className="size-3 animate-spin text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">Đang tải...</span>
-                                </div>
-                              ) : availableVersions.length > 0 ? (
-                                availableVersions.map((v) => (
-                                  <SelectItem key={v} value={v}>
-                                    <span className="flex items-center gap-2">
-                                      <div className={cn('size-2 rounded-full', v === 'Built-in' ? 'bg-emerald-400' : 'bg-blue-400')} />
-                                      {v}
-                                    </span>
-                                  </SelectItem>
-                                ))
-                              ) : (
-                                <SelectItem value={selectedVersion || 'Built-in'}>
-                                  <span className="flex items-center gap-2">
-                                    <div className={cn('size-2 rounded-full', isBuiltIn ? 'bg-emerald-400' : 'bg-blue-400')} />
-                                    {selectedVersion || 'Built-in'}
-                                  </span>
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                    <div className="grid grid-cols-2 gap-4 p-4 rounded-xl border border-border/50 bg-card/40 backdrop-blur-sm">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-muted-foreground ml-0.5 flex items-center gap-1.5">
+                          Định danh Step ID
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="size-3 text-muted-foreground/50 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[240px] text-xs">
+                                Step ID được dùng để tham chiếu kết quả từ Node này ở các bước tiếp theo. Không nên chứa khoảng trắng.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </Label>
+                        <Input
+                          value={stepId}
+                          onChange={(e) => setStepId(e.target.value.replace(/\s/g, '_'))}
+                          className="bg-background/50 border-border/60 hover:border-border focus:border-primary transition-all duration-200 h-9 rounded-lg px-3 font-mono text-[13px]"
+                        />
                       </div>
-
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Mô tả</Label>
-                        <Textarea
-                          value={nodeDescription}
-                          onChange={(e) => setNodeDescription(e.target.value)}
-                          placeholder="Mô tả ngắn gọn về bước này..."
-                          className="bg-card/80 border-border/60 hover:border-border transition-colors min-h-[70px] resize-none"
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-muted-foreground ml-0.5">Tên hiển thị</Label>
+                        <Input
+                          value={nodeName}
+                          onChange={(e) => setNodeName(e.target.value)}
+                          placeholder="Nhập tên node..."
+                          className="bg-background/50 border-border/60 hover:border-border focus:border-primary transition-all duration-200 h-9 rounded-lg px-3"
                         />
                       </div>
                     </div>
+                  </div>
 
-                    {/* Dynamic Input Schema Fields via RJSF */}
-                    {isSchemaLoading && !hasInputFields && (
-                      <>
-                        <Separator />
-                        <div className="flex flex-col items-center justify-center py-10 text-center">
-                          <Loader2 className="size-8 text-primary animate-spin mb-3" />
-                          <p className="text-sm text-muted-foreground">Đang tải schema plugin...</p>
-                          <p className="text-xs text-muted-foreground/60 mt-1">
-                            Đang lấy cấu hình cho {pluginName || 'plugin'}
-                          </p>
+                  {/* ──── Section: Plugin Parameters ──── */}
+                  <div className="space-y-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 group">
+                        <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary transition-transform group-hover:scale-110">
+                          <Settings2 className="size-3.5" />
                         </div>
-                      </>
-                    )}
+                        <h3 className="text-sm font-semibold text-foreground">Tham số đầu vào</h3>
+                      </div>
+                      {hasInputFields && (
+                        <Badge variant="outline" className="text-[10px] h-5 px-2.5 rounded-full font-mono bg-primary/5 text-primary border-primary/20">
+                          {Object.keys(inputSchema.properties!).length} fields
+                        </Badge>
+                      )}
+                    </div>
 
-                    {schemaError && !isSchemaLoading && !hasInputFields && (
-                      <>
-                        <Separator />
-                        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
-                          <AlertCircle className="size-8 text-destructive/60 mx-auto mb-2" />
-                          <p className="text-sm font-medium text-destructive">
-                            Không thể tải schema plugin
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {(schemaError as Error).message}
-                          </p>
+                    <div className="relative">
+                      {/* Subtle loading overlay */}
+                      {isSchemaLoading && !hasInputFields && (
+                        <div className="flex flex-col items-center justify-center py-16 rounded-2xl border border-dashed border-border/50 bg-muted/5">
+                          <div className="relative">
+                            <div className="size-12 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <Package className="size-5 text-primary/40 animate-pulse" />
+                            </div>
+                          </div>
+                          <p className="text-sm font-medium text-foreground/80 mt-4">Đang tải schema cấu hình...</p>
+                          <p className="text-xs text-muted-foreground mt-1">Vui lòng đợi trong giây lát</p>
                         </div>
-                      </>
-                    )}
+                      )}
 
-                    {hasInputFields && (
-                      <>
-                        <Separator />
-                        <div className="space-y-4 relative">
-                          {/* Subtle loading overlay when refreshing schema */}
+                      {schemaError && !isSchemaLoading && !hasInputFields && (
+                        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 text-center space-y-3">
+                          <div className="size-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
+                            <AlertCircle className="size-6 text-destructive" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-destructive">Lỗi tải schema</p>
+                            <p className="text-xs text-muted-foreground/80 mt-1">{(schemaError as Error).message}</p>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="rounded-lg h-8 px-4 border-destructive/20 text-destructive hover:bg-destructive/10">
+                            Thử lại
+                          </Button>
+                        </div>
+                      )}
+
+                      {hasInputFields && (
+                        <div className={cn(
+                          "p-1 rounded-2xl border border-border/50 bg-card/30 backdrop-blur-sm transition-all",
+                          isSchemaLoading && "opacity-50 pointer-events-none grayscale-[0.3]"
+                        )}>
                           {isSchemaLoading && (
-                            <div className="absolute inset-0 z-10 bg-background/20 backdrop-blur-[1px] flex items-start justify-center pt-10 pointer-events-none">
-                              <Loader2 className="size-6 text-primary animate-spin opacity-50" />
+                            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/5 backdrop-blur-[1px]">
+                              <Loader2 className="size-8 text-primary animate-spin" />
                             </div>
                           )}
 
-                          <div className={cn("flex items-center justify-between", isSchemaLoading && "opacity-50")}>
-                            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                              <Settings2 className="size-3.5" />
-                              Tham số đầu vào
-                            </div>
-                            <Badge variant="outline" className="text-[10px] font-mono h-5 px-2">
-                              {Object.keys(inputSchema.properties!).length} tham số
-                            </Badge>
-                          </div>
-
-                          <div className={cn(isSchemaLoading && "opacity-50 grayscale-[0.2]")}>
+                          <div className="px-5 py-4">
                             <Form
                               schema={rjsfSchema as Record<string, unknown>}
                               formData={localFormData}
@@ -700,156 +578,96 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                                 'ui:submitButtonOptions': { norender: true },
                               }}
                             >
-                              {/* Hide default submit button */}
                               <></>
                             </Form>
                           </div>
                         </div>
-                      </>
-                    )}
+                      )}
 
-                    {/* No input fields fallback */}
-                    {!isSchemaLoading && !schemaError && !hasInputFields && (
-                      <>
-                        <Separator />
-                        <div className="rounded-xl border border-dashed border-border/50 bg-muted/20 p-8 text-center">
-                          <Settings2 className="size-10 text-muted-foreground/20 mx-auto mb-3" />
-                          <p className="text-sm font-medium text-muted-foreground/60">
-                            Node này không có tham số cấu hình
-                          </p>
-                          <p className="text-xs text-muted-foreground/40 mt-1">
-                            Các cài đặt chung phía trên vẫn có thể chỉnh sửa
+                      {!isSchemaLoading && !schemaError && !hasInputFields && (
+                        <div className="rounded-2xl border border-dashed border-border/50 bg-card/20 p-10 text-center">
+                          <div className="size-14 rounded-full bg-muted/30 flex items-center justify-center mx-auto mb-4 border border-border/30">
+                            <Settings2 className="size-7 text-muted-foreground/20" />
+                          </div>
+                          <p className="text-sm font-semibold text-muted-foreground/80">Plugin không có tham số</p>
+                          <p className="text-xs text-muted-foreground/50 mt-1 max-w-[260px] mx-auto">
+                            Node này thực thi tự động mà không cần cấu hình tham số đầu vào cụ thể.
                           </p>
                         </div>
-                      </>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </TabsContent>
 
-                {/* ──── Tab: Output Schema ──── */}
-                <TabsContent value="output" className="m-0 focus-visible:outline-none">
+                  {/* ──── Section: Advanced Configuration ──── */}
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      <ArrowRightLeft className="size-3.5" />
-                      Output Schema
-                    </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Dữ liệu trả về sau khi node thực thi xong. Bạn có thể sử dụng các biến này ở các bước tiếp theo.
-                    </p>
-
-                    {/* Output hint */}
-                    <div className="rounded-lg bg-blue-500/5 border border-blue-500/20 p-3 flex items-start gap-3">
-                      <Info className="size-4 text-blue-500 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Cách sử dụng biến</p>
-                        <p className="text-[11px] text-blue-500/70 mt-0.5">
-                          Sử dụng cú pháp <code className="bg-blue-500/10 px-1.5 py-0.5 rounded font-mono">{'{{Steps.<NodeName>.Output.<Key>}}'}</code> để truyền dữ liệu giữa các bước.
-                        </p>
+                    <div className="flex items-center gap-2 group">
+                      <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center text-primary transition-transform group-hover:scale-110">
+                        <Settings className="size-3.5" />
                       </div>
+                      <h3 className="text-sm font-semibold text-foreground">Cấu hình nâng cao</h3>
                     </div>
 
-                    <OutputSchemaPreview schema={outputSchema} />
-                  </div>
-                </TabsContent>
+                    <div className="grid gap-4 p-4 rounded-xl border border-border/50 bg-card/40 backdrop-blur-sm">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="enable-retry" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+                          Tự động thử lại khi lỗi
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="size-3 text-muted-foreground/50 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[240px] text-xs">
+                                Nếu kích hoạt, Node sẽ tự động thực thi lại theo số lần được chỉ định nếu gặp lỗi.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </Label>
+                        <Switch
+                          id="enable-retry"
+                          checked={enableRetry}
+                          onCheckedChange={setEnableRetry}
+                        />
+                      </div>
 
-                {/* ──── Tab: Advanced ──── */}
-                <TabsContent value="advanced" className="m-0 focus-visible:outline-none">
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      <Braces className="size-3.5" />
-                      Cài đặt nâng cao
-                    </div>
-
-                    {/* Retry Policy */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Chính sách thử lại (Retry)</Label>
-                      <Select defaultValue="none">
-                        <SelectTrigger className="bg-card/80 border-border/60 hover:border-border transition-colors h-10">
-                          <SelectValue placeholder="Chọn chính sách..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Không thử lại (Fail immediately)</SelectItem>
-                          <SelectItem value="linear">Linear Backoff (tối đa 3 lần)</SelectItem>
-                          <SelectItem value="exponential">Exponential Backoff (tối đa 5 lần)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Timeout */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Timeout (ms)</Label>
-                      <Input
-                        type="number"
-                        defaultValue={5000}
-                        className="bg-card/80 border-border/60 hover:border-border transition-colors h-10 font-mono"
-                      />
-                      <p className="text-[11px] text-muted-foreground/70">
-                        Thời gian chờ tối đa trước khi đánh dấu là lỗi.
-                      </p>
-                    </div>
-
-                    {/* Continue on Error */}
-                    <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card/50 p-4">
-                      <div className="flex items-center gap-3">
-                        <AlertTriangle className="size-4 text-amber-500" />
-                        <div>
-                          <Label className="text-sm font-medium">Tiếp tục khi lỗi</Label>
-                          <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                            Workflow sẽ tiếp tục chạy ngay cả khi node này gặp lỗi
-                          </p>
+                      {enableRetry && (
+                        <div className="space-y-1.5 mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                          <Label className="text-xs font-medium text-muted-foreground ml-0.5">
+                            Số lần thử lại (MaxRetries)
+                          </Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={maxRetries}
+                            onChange={(e) => setMaxRetries(e.target.value === '' ? '' : parseInt(e.target.value))}
+                            placeholder="Ví dụ: 3"
+                            className="bg-background/50 border-border/60 hover:border-border focus:border-primary transition-all duration-200 h-9 rounded-lg px-3 max-w-[200px]"
+                          />
                         </div>
-                      </div>
-                      <Switch />
+                      )}
                     </div>
                   </div>
-                </TabsContent>
-
-                {/* ──── Tab: Logs ──── */}
-                <TabsContent value="logs" className="m-0 focus-visible:outline-none">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      <Terminal className="size-3.5" />
-                      Log thực thi gần nhất
-                    </div>
-
-                    <div className="rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden">
-                      <div className="flex items-center gap-2 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800">
-                        <div className="flex gap-1.5">
-                          <div className="size-2.5 rounded-full bg-red-500/60" />
-                          <div className="size-2.5 rounded-full bg-yellow-500/60" />
-                          <div className="size-2.5 rounded-full bg-green-500/60" />
-                        </div>
-                        <span className="text-[10px] text-zinc-500 font-mono ml-2">console</span>
-                      </div>
-                      <div className="p-4 font-mono text-xs space-y-1 min-h-[160px]">
-                        <p className="text-zinc-600">// Chưa có log thực thi cho node này.</p>
-                        <p className="text-zinc-400">
-                          Status: <span className="text-amber-400">WAITING</span>
-                        </p>
-                        <p className="text-zinc-400">
-                          Inputs: <span className="text-blue-400">{JSON.stringify(localFormData, null, 0) || 'null'}</span>
-                        </p>
-                        <p className="text-zinc-400">
-                          Outputs: <span className="text-blue-400">null</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
+                </div>
               </div>
-            </ScrollArea>
-          </Tabs>
 
-          {/* ━━━━━━━━ Footer ━━━━━━━━ */}
-          <DialogFooter className="px-6 py-4 border-t border-border bg-muted/30">
-            <Button variant="outline" onClick={onClose}>
-              Hủy bỏ
-            </Button>
-            <Button onClick={handleSave} className="gap-2 shadow-md min-w-[140px]">
-              <Save className="size-4" />
-              Lưu cấu hình
-            </Button>
-          </DialogFooter>
+              {/* ━━━━━━━━ Footer ━━━━━━━━ */}
+              <DialogFooter className="shrink-0 px-6 py-4 border-t border-border bg-background/80 backdrop-blur-md">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="h-10 rounded-xl transition-all active:scale-95 px-6 border-border/60"
+                >
+                  Hủy bỏ
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  className="h-10 px-8 rounded-xl bg-primary shadow-[0_4px_12px_rgba(var(--primary-rgb),0.2)] transition-all hover:shadow-[0_6px_20px_rgba(var(--primary-rgb),0.3)] active:scale-95 gap-2"
+                >
+                  <Save className="size-4" />
+                  Lưu cấu hình
+                </Button>
+              </DialogFooter>
+            </div>{/* end main content area */}
+          </div>{/* end relative wrapper */}
         </DialogContent>
       </Dialog>
 

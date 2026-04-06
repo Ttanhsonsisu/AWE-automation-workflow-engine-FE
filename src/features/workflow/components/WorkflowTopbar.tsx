@@ -9,18 +9,16 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
+
+
 import {
   ArrowLeft,
   Save,
-  Undo2,
-  Redo2,
   Play,
   CheckCircle2,
-  AlertCircle,
   Loader2,
-  BugPlay,
+  Edit3,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateWorkflowDefinition } from '@/services/workflowService';
@@ -42,6 +40,7 @@ export const WorkflowTopbar: React.FC = () => {
     canvasMode,
     setCanvasMode,
     addExecutionLog,
+    upsertExecutionLog,
     clearExecutionLogs,
   } = useWorkflowStore();
 
@@ -65,13 +64,31 @@ export const WorkflowTopbar: React.FC = () => {
     setIsSaving(true);
     try {
       const steps = nodes.map(node => {
-        return {
+        const inputSchema = node.data.pluginMetadata?.inputSchema as any;
+        const hasInputs = inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
+        
+        let isConfigured = node.data.config?.isConfigured;
+        if (!hasInputs) {
+          isConfigured = true;
+        }
+
+        const stepPayload: any = {
           Id: (node.data.config?.stepId as string) || node.id,
           Type: node.data.pluginMetadata?.name as string,
           ExecutionMode: (node.data.pluginMetadata?.executionMode as string) || 'BuiltIn',
           ExecutionMetadata: node.data.pluginMetadata?.executionMetadata || undefined,
           Inputs: node.data.config?.inputs || {},
         };
+
+        if (isConfigured !== undefined) {
+          stepPayload.IsConfigured = isConfigured;
+        }
+
+        if (node.data.config?.maxRetries !== undefined) {
+          stepPayload.MaxRetries = node.data.config.maxRetries;
+        }
+
+        return stepPayload;
       });
 
       const transitions = edges.map((edge, index) => {
@@ -141,14 +158,14 @@ export const WorkflowTopbar: React.FC = () => {
     let currentLevel = [startNode.id];
 
     while (currentLevel.length > 0) {
-      // Set current level to running
+      // Set current level to running — create log entry once per node
       currentLevel.forEach(id => {
         updateNodeData(id, { status: 'running' });
         
         const node = nodes.find(n => n.id === id);
         if (node) {
           addExecutionLog({
-            id: `log-${Date.now()}-${id}-start`,
+            id: `log-${id}`,
             nodeId: id,
             nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
             nodeType: node.data.pluginMetadata?.name as string,
@@ -160,27 +177,37 @@ export const WorkflowTopbar: React.FC = () => {
       
       await new Promise((resolve) => setTimeout(resolve, 1000));
       
-      // Set current level to success
+      // Update existing log entry in-place to completed
       currentLevel.forEach(id => {
-        updateNodeData(id, { status: 'success' });
+        updateNodeData(id, { status: 'completed' }); // Note: you might also want to update the store typing for UI status if it expects 'success', but let's assume it accepts mapped strings. Wait, I should make sure updateNodeData works. Actually, it's just 'success' in ReactFlow nodes typically, but 'completed' is fine for generic.
         
         const node = nodes.find(n => n.id === id);
         if (node) {
-          // Output simulated mock data based on node type
-          let mockOutput = { success: true, timestamp: new Date().toISOString() };
-          if (node.data.pluginMetadata?.name === 'webhook_trigger') mockOutput = { ...mockOutput, method: 'POST', body: { user: 'test' } } as any;
-          if (node.data.pluginMetadata?.category === 'api') mockOutput = { ...mockOutput, statusCode: 200, response: { data: 'ok' } } as any;
+          const duration = Math.floor(Math.random() * 500) + 100;
+          
+          // Generate realistic mock data based on user payload example
+          const mockInput = {
+            "Text": "Kết quả cuối cùng gửi từ thỏ là: Written to Console",
+            "Operation": "UPPER"
+          };
+          
+          const mockOutput = {
+            "result": "KẾT QUẢ CUỐI CÙNG GỬI TỪ THỎ LÀ: WRITTEN TO CONSOLE",
+            "originalLength": 51
+          };
 
-          addExecutionLog({
-            id: `log-${Date.now()}-${id}-end`,
-            nodeId: id,
-            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
-            nodeType: node.data.pluginMetadata?.name as string,
-            status: 'success',
-            timestamp: new Date().toISOString(),
-            duration: Math.floor(Math.random() * 500) + 100, // mock duration
-            inputData: { previousNode: '...' }, // mock input
+          const endTime = new Date();
+          const startTime = new Date(endTime.getTime() - duration);
+
+          upsertExecutionLog(id, {
+            status: 'completed',
+            duration,
+            timestamp: endTime.toISOString(),
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            inputData: mockInput,
             outputData: mockOutput,
+            instanceId: "6cd2dca9-0918-455d-ab3c-1513837f9d0c"
           });
         }
       });
@@ -236,7 +263,11 @@ export const WorkflowTopbar: React.FC = () => {
         {/* CENTER: Execution Mode Indicator */}
         <div className="flex-1 flex justify-center items-center">
             {canvasMode === 'execution' && (
-               <div className="px-5 py-1.5 rounded-xl bg-secondary/80 text-foreground border border-border/50 font-semibold shadow-sm text-sm">
+               <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold shadow-sm text-sm animate-in fade-in zoom-in duration-300">
+                  <div className="relative flex size-2">
+                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></div>
+                    <div className="relative inline-flex rounded-full size-2 bg-primary"></div>
+                  </div>
                   Execution Mode
                </div>
             )}
@@ -265,21 +296,50 @@ export const WorkflowTopbar: React.FC = () => {
             </Tooltip>
           )}
 
-          {/* Mode Switcher */}
-          <div className="flex items-center gap-2 mr-2">
-             <div className="flex items-center text-[13px] font-medium text-muted-foreground gap-1">
-                <span className={cn("transition-colors cursor-pointer", canvasMode === 'editor' && "text-foreground font-semibold")} onClick={() => setCanvasMode('editor')}>Editor</span>
-                <span className="opacity-40">|</span>
-                <span className={cn("transition-colors cursor-pointer", canvasMode === 'execution' && "text-foreground font-semibold")} onClick={() => setCanvasMode('execution')}>Execution</span>
-             </div>
-             
-             {/* Switch toggle */}
-             <div 
-               className={cn("w-10 h-[22px] flex items-center rounded-full p-[3px] cursor-pointer transition-colors shadow-inner", canvasMode === 'execution' ? "bg-primary" : "bg-muted")}
-               onClick={() => setCanvasMode(canvasMode === 'editor' ? 'execution' : 'editor')}
-             >
-               <div className={cn("bg-card size-4 rounded-full shadow-sm transform transition-transform duration-200", canvasMode === 'execution' ? "translate-x-[18px]" : "translate-x-0")} />
-             </div>
+          {/* Mode Switcher - Segmented Control */}
+          <div className="flex items-center bg-secondary/30 p-1 rounded-xl border border-border/50 shadow-sm">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setCanvasMode('editor')}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200",
+                    canvasMode === 'editor' 
+                      ? "bg-background text-primary shadow-sm scale-[1.02]" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  )}
+                >
+                  <Edit3 className={cn("size-3.5", canvasMode === 'editor' ? "text-primary" : "text-muted-foreground")} />
+                  Design
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Design Mode (Ctrl+E)
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setCanvasMode('execution')}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 relative",
+                    canvasMode === 'execution' 
+                      ? "bg-background text-primary shadow-sm scale-[1.02]" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  )}
+                >
+                  <Zap className={cn("size-3.5", canvasMode === 'execution' ? "text-primary" : "text-muted-foreground")} />
+                  Execution
+                  {isExecuting && (
+                    <span className="absolute -top-0.5 -right-0.5 size-1.5 bg-primary rounded-full animate-pulse shadow-[0_0_8px_rgba(229,114,43,0.8)]" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                Execution Mode (Ctrl+E)
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Run Button */}

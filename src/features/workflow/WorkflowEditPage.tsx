@@ -38,7 +38,7 @@ import { usePreloadPluginDetails } from './hooks/usePreloadPluginDetails';
 import { StartNode } from './components/nodes/StartNode';
 import { ActionNode } from './components/nodes/ActionNode';
 import { CustomEdge } from './components/edges/CustomEdge';
-import { ExecutionLogPanel } from './components/ExecutionLogPanel';
+import { BottomLogPanel } from './components/BottomLogPanel';
 
 // ── Register custom node/edge types (must be outside component!) ──
 const nodeTypes: NodeTypes = {
@@ -57,6 +57,7 @@ const WorkflowCanvas: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodeLibraryOpen, setNodeLibraryOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [logPanelVisible, setLogPanelVisible] = useState(false);
 
   const {
     nodes,
@@ -69,6 +70,7 @@ const WorkflowCanvas: React.FC = () => {
     setSelectedNode,
     pushHistory,
     canvasMode,
+    isExecuting,
   } = useWorkflowStore();
 
   const { categories, hasFetched, isLoading: isCatalogLoading, fetchCatalog } = usePluginStore();
@@ -285,11 +287,27 @@ const WorkflowCanvas: React.FC = () => {
         e.preventDefault();
         useWorkflowStore.getState().markSaved();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        const currentMode = useWorkflowStore.getState().canvasMode;
+        useWorkflowStore.getState().setCanvasMode(currentMode === 'editor' ? 'execution' : 'editor');
+        toast.info(currentMode === 'editor' ? "Switch to Preview mode" : "Switch to Design mode", { 
+          duration: 1500,
+          position: 'top-center'
+        });
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Auto-show log panel when execution starts
+  useEffect(() => {
+    if (isExecuting) {
+      setLogPanelVisible(true);
+    }
+  }, [isExecuting]);
   if (isFetching && !workflowDef) {
     return (
       <div className="flex h-screen items-center justify-center p-4">
@@ -300,11 +318,13 @@ const WorkflowCanvas: React.FC = () => {
       </div>
     );
   }
+
+
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden relative">
       <WorkflowTopbar />
 
-      <div className="flex flex-row flex-1 w-full overflow-hidden relative">
+      <div className="flex flex-col flex-1 w-full overflow-hidden relative">
         <div className="flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
@@ -337,7 +357,10 @@ const WorkflowCanvas: React.FC = () => {
             snapGrid={[16, 16]}
             deleteKeyCode={['Backspace', 'Delete']}
             connectionLineStyle={{ stroke: 'hsl(var(--primary))', strokeWidth: 2.5 }}
-            className="!bg-slate-50 dark:!bg-slate-950/50"
+            className={cn(
+              "!bg-slate-50 dark:!bg-slate-950/50 transition-all duration-700",
+              isExecutionMode && "bg-slate-100/80 dark:bg-slate-900/80 ring-2 ring-inset ring-primary/10"
+            )}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="hsl(var(--primary)/0.15)" />
             <Controls
@@ -365,14 +388,33 @@ const WorkflowCanvas: React.FC = () => {
               </div>
             </TooltipProvider>
           )}
-        </div>
 
-        {/* Execution Log Right Panel */}
-        {isExecutionMode && (
-          <aside className="w-[400px] min-w-[400px] max-w-[400px] h-full border-l border-border bg-card flex flex-col shrink-0 overflow-hidden animate-in slide-in-from-right-4 duration-300">
-            <ExecutionLogPanel />
-          </aside>
-        )}
+          {/* ── Bottom Log Panel (overlay inside canvas) ── */}
+          <BottomLogPanel
+            visible={logPanelVisible}
+            onClose={() => setLogPanelVisible(false)}
+          />
+
+          {/* ── Floating Toggle Button to reopen log panel ── */}
+          {!logPanelVisible && (
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setLogPanelVisible(true)}
+                    size="sm"
+                    variant="outline"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 gap-1.5 h-8 px-3 rounded-full bg-card/90 backdrop-blur-sm border-border/60 shadow-lg hover:shadow-xl transition-all text-xs font-semibold animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  >
+                    <Plus className="size-3" />
+                    Show Execution Log
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Open execution log panel</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
       {/* Node Library Sheet */}

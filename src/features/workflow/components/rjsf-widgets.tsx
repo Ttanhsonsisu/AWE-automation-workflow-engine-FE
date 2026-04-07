@@ -58,6 +58,10 @@ const TextWidget: React.FC<WidgetProps> = ({
   schema,
   placeholder,
 }) => {
+  const [isExpressionMode, setIsExpressionMode] = React.useState(() => {
+    return typeof value === 'string' && value.includes('{{');
+  });
+
   const title = (schema.title as string) || '';
   const isLong =
     title.toLowerCase().includes('message') ||
@@ -81,9 +85,15 @@ const TextWidget: React.FC<WidgetProps> = ({
         <button
           type="button"
           title="Chế độ biểu thức (Expression)"
-          className="absolute top-2 right-2 p-1 rounded-md opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent transition-all"
+          onClick={() => setIsExpressionMode(!isExpressionMode)}
+          className={cn(
+            "absolute top-2 right-2 p-1 rounded-md transition-all",
+            isExpressionMode 
+              ? "opacity-100 bg-blue-500/10 text-blue-500" 
+              : "opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent"
+          )}
         >
-          <SquareFunction className="size-3.5 text-muted-foreground" />
+          <SquareFunction className="size-3.5" />
         </button>
       </div>
     );
@@ -93,7 +103,7 @@ const TextWidget: React.FC<WidgetProps> = ({
     <div className="relative group/input">
       <Input
         id={id}
-        type={(schema.format as string) === 'email' ? 'email' : 'text'}
+        type={isExpressionMode ? "text" : ((schema.format as string) === 'email' ? 'email' : 'text')}
         value={value ?? ''}
         required={required}
         disabled={disabled || readonly}
@@ -101,14 +111,23 @@ const TextWidget: React.FC<WidgetProps> = ({
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         onBlur={(e) => onBlur(id, e.target.value)}
         onFocus={(e) => onFocus(id, e.target.value)}
-        className="bg-card/80 border-border/60 hover:border-border transition-colors h-10 pr-10"
+        className={cn(
+          "bg-card/80 border-border/60 hover:border-border transition-colors h-10 pr-10",
+          isExpressionMode && "font-mono text-blue-500"
+        )}
       />
       <button
         type="button"
         title="Chế độ biểu thức (Expression)"
-        className="absolute top-1/2 -translate-y-1/2 right-2 p-1 rounded-md opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent transition-all"
+        onClick={() => setIsExpressionMode(!isExpressionMode)}
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 right-2 p-1 rounded-md transition-all",
+          isExpressionMode 
+            ? "opacity-100 bg-blue-500/10 text-blue-500" 
+            : "opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent text-muted-foreground"
+        )}
       >
-        <SquareFunction className="size-3.5 text-muted-foreground" />
+        <SquareFunction className="size-3.5" />
       </button>
     </div>
   );
@@ -129,36 +148,52 @@ const NumberWidget: React.FC<WidgetProps> = ({
   schema,
   placeholder,
 }) => {
+  const [isExpressionMode, setIsExpressionMode] = React.useState(() => {
+    return typeof value === 'string' && value.includes('{{');
+  });
+
   const title = (schema.title as string) || '';
   return (
     <div className="relative group/input">
       <Input
         id={id}
-        type="number"
+        type={isExpressionMode ? "text" : "number"}
         value={value ?? ''}
         required={required}
         disabled={disabled || readonly}
         placeholder={placeholder || `Nhập ${title}...`}
-        min={schema.minimum as number | undefined}
-        max={schema.maximum as number | undefined}
+        min={isExpressionMode ? undefined : (schema.minimum as number | undefined)}
+        max={isExpressionMode ? undefined : (schema.maximum as number | undefined)}
         onChange={(e) => {
           const v = e.target.value;
           if (v === '') {
             onChange(undefined);
+          } else if (isExpressionMode) {
+            onChange(v); // string pass-through for expression
           } else {
-            onChange(schema.type === 'integer' ? parseInt(v, 10) : parseFloat(v));
+            const parsed = schema.type === 'integer' ? parseInt(v, 10) : parseFloat(v);
+            onChange(Number.isNaN(parsed) ? undefined : parsed);
           }
         }}
         onBlur={(e) => onBlur(id, e.target.value)}
         onFocus={(e) => onFocus(id, e.target.value)}
-        className="bg-card/80 border-border/60 hover:border-border transition-colors h-10 font-mono pr-10"
+        className={cn(
+          "bg-card/80 border-border/60 hover:border-border transition-colors h-10 font-mono pr-10",
+          isExpressionMode && "text-blue-500"
+        )}
       />
       <button
         type="button"
         title="Chế độ biểu thức (Expression)"
-        className="absolute top-1/2 -translate-y-1/2 right-2 p-1 rounded-md opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent transition-all"
+        onClick={() => setIsExpressionMode(!isExpressionMode)}
+        className={cn(
+          "absolute top-1/2 -translate-y-1/2 right-2 p-1 rounded-md transition-all",
+          isExpressionMode 
+            ? "opacity-100 bg-blue-500/10 text-blue-500" 
+            : "opacity-0 group-hover/input:opacity-60 hover:!opacity-100 hover:bg-accent text-muted-foreground"
+        )}
       >
-        <SquareFunction className="size-3.5 text-muted-foreground" />
+        <SquareFunction className="size-3.5" />
       </button>
       {(schema.minimum !== undefined || schema.maximum !== undefined) && (
         <p className="text-[10px] text-muted-foreground/50 font-mono mt-1">

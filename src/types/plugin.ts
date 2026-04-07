@@ -16,7 +16,11 @@ export interface JsonSchemaProperty {
   maximum?: number;
   enum?: string[];
   format?: string;
-  items?: JsonSchemaProperty;
+  items?: JsonSchemaProperty | JsonSchemaProperty[];
+  /** Recursive properties for objects */
+  properties?: Record<string, JsonSchemaProperty>;
+  /** Required fields for objects */
+  required?: string[];
   'x-nullable'?: boolean;
   'x-enumNames'?: string[];
   /** JSON Schema $ref pointer, e.g. "#/definitions/TextOperation" */
@@ -75,12 +79,17 @@ export interface PluginDetailParams {
   packageId?: string | null;
   /** Required for DynamicDll / RemoteGrpc; null for BuiltIn */
   version?: string | null;
+  /** Used to fetch specific plugin dll by sha256 when packageId is unavailable */
+  sha256?: string | null;
 }
 
-/** Response data shape for plugin detail */
 export interface PluginDetailData {
+  packageId?: string | null;
   name: string;
   displayName: string;
+  description?: string;
+  category?: string;
+  icon?: string;
   executionMode: PluginExecutionMode | string;
   version: string | null;
   executionMetadata: unknown;

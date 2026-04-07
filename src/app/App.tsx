@@ -2,6 +2,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from '@/components/shared/ThemeProvider';
+import { Toaster } from '@/components/ui/sonner';
 import { router } from './router';
 
 const queryClient = new QueryClient({
@@ -19,6 +20,7 @@ const App: React.FC = () => {
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
+        <Toaster position="bottom-right" expand={true} richColors />
       </QueryClientProvider>
     </ThemeProvider>
   );

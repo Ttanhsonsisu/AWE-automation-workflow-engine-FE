@@ -21,12 +21,21 @@ export interface ExecutionLogItem {
   nodeId: string;
   nodeLabel: string;
   nodeType: string;
-  status: 'running' | 'success' | 'error';
-  timestamp: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'suspended' | 'retrying';
+  timestamp: string; // Used as fallback or start time
   duration?: number;
   inputData?: any;
   outputData?: any;
   error?: string;
+  // Raw API response mapping
+  instanceId?: string;
+  startTime?: string;
+  endTime?: string;
+  runtimeLogs?: Array<{
+    level: string;
+    message: string;
+    timestamp: string;
+  }>;
 }
 
 export interface NodeUiState {
@@ -56,6 +65,7 @@ export interface NodeConfigData {
   nodeLabel?: string;
   stepId?: string;
   isConfigured?: boolean;
+  maxRetries?: number;
 }
 
 export interface WorkflowNodeData {
@@ -89,6 +99,7 @@ interface WorkflowState {
   workflowName: string;
   isSaved: boolean;
   isExecuting: boolean;
+  workflowExecutionStatus: string | null;
   
   canvasMode: 'editor' | 'execution';
   executionLogs: ExecutionLogItem[];
@@ -149,8 +160,11 @@ interface WorkflowState {
   setExecuting: (executing: boolean) => void;
   setCanvasMode: (mode: 'editor' | 'execution') => void;
   addExecutionLog: (log: ExecutionLogItem) => void;
+  /** Update existing log entry by nodeId, or insert if not found */
+  upsertExecutionLog: (nodeId: string, logUpdate: Partial<ExecutionLogItem>) => void;
   updateExecutionLog: (id: string, logUpdate: Partial<ExecutionLogItem>) => void;
   clearExecutionLogs: () => void;
+  setWorkflowExecutionStatus: (status: string | null) => void;
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -159,6 +173,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflowName: 'Untitled Workflow',
   isSaved: true,
   isExecuting: false,
+  workflowExecutionStatus: null,
   canvasMode: 'editor',
   executionLogs: [],
   nodes: [],
@@ -379,6 +394,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set((state) => ({ executionLogs: [...state.executionLogs, log] }));
   },
 
+  upsertExecutionLog: (nodeId, logUpdate) => {
+    set((state) => {
+      const existingIndex = state.executionLogs.findIndex(l => l.nodeId === nodeId);
+      if (existingIndex >= 0) {
+        const updated = [...state.executionLogs];
+        updated[existingIndex] = { ...updated[existingIndex], ...logUpdate };
+        return { executionLogs: updated };
+      }
+      // Should not happen if addExecutionLog is called first in the flow,
+      // but as a safety net, insert the log as-is if nodeId is missing
+      return state;
+    });
+  },
+
   updateExecutionLog: (id, logUpdate) => {
     set((state) => ({
       executionLogs: state.executionLogs.map(log => 
@@ -387,5 +416,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }));
   },
   
-  clearExecutionLogs: () => set({ executionLogs: [] }),
+  clearExecutionLogs: () => set({ executionLogs: [], workflowExecutionStatus: null }),
+
+  setWorkflowExecutionStatus: (status) => set({ workflowExecutionStatus: status }),
 }));

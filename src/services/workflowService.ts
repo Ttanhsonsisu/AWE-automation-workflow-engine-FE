@@ -15,10 +15,32 @@ export interface WorkflowDefinitionPayload {
       Target: string;
     }>;
   };
-  UiJson: string | null;
+  UiJson: any | null;
 }
 
-export async function saveWorkflowDefinition(payload: WorkflowDefinitionPayload) {
+export interface UpdateWorkflowDefinitionPayload extends WorkflowDefinitionPayload {
+  Id: string;
+}
+
+export async function createWorkflowDefinition(payload: WorkflowDefinitionPayload) {
   const response = await apiClient.post('/workflows/definitions', payload);
+  return response.data;
+}
+
+export async function updateWorkflowDefinition(payload: UpdateWorkflowDefinitionPayload) {
+  const response = await apiClient.put('/workflows/definitions', payload);
+  return response.data;
+}
+
+export interface StartWorkflowPayload {
+  DefinitionId: string;
+  JobName?: string;
+  InputData?: Record<string, any>;
+  IsTest?: boolean;
+  StopAtStepId?: string | null;
+}
+
+export async function startWorkflow(payload: StartWorkflowPayload) {
+  const response = await apiClient.post('/workflows', payload);
   return response.data;
 }

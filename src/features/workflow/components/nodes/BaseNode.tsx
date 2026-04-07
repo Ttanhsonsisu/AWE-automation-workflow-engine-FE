@@ -1,7 +1,7 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RotateCw } from 'lucide-react';
 
 export interface BaseNodeProps {
   id: string;
@@ -20,11 +20,18 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
   const status = data?.status || 'idle';
 
   let statusRingClass = '';
-  if (status === 'running') {
+  const isRunning = status === 'running';
+  const isRetrying = status === 'retrying';
+  const isSuccess = status === 'success' || status === 'completed';
+  const isError = status === 'error' || status === 'failed';
+
+  if (isRunning) {
     statusRingClass = 'ring-[3px] ring-primary shadow-[0_0_25px_hsl(var(--primary)/0.5)] animate-pulse border-primary';
-  } else if (status === 'success') {
+  } else if (isRetrying) {
+    statusRingClass = 'ring-[3px] ring-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-500 animate-pulse';
+  } else if (isSuccess) {
     statusRingClass = 'ring-2 ring-emerald-500 border-emerald-500';
-  } else if (status === 'error') {
+  } else if (isError) {
     statusRingClass = 'ring-2 ring-destructive animate-shake border-destructive';
   }
 
@@ -37,17 +44,22 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
         isStartNode && 'border-primary ring-2 ring-primary shadow-[0_0_35px_hsl(var(--primary)/0.7)] bg-primary/10' // Huge glow for start node
       )}
     >
-      {status === 'running' && (
+      {isRunning && (
         <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-primary">
           <Loader2 className="size-4 text-primary animate-spin" />
         </div>
       )}
-      {status === 'success' && (
+      {isRetrying && (
+        <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-amber-500">
+          <RotateCw className="size-4 text-amber-500 animate-spin" />
+        </div>
+      )}
+      {isSuccess && (
         <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-emerald-500">
           <CheckCircle2 className="size-4 text-emerald-500" />
         </div>
       )}
-      {status === 'error' && (
+      {isError && (
         <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-destructive">
           <XCircle className="size-4 text-destructive" />
         </div>
@@ -59,7 +71,7 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
       </div>
 
       {/* Optional: Error Tooltip on Hover if error */}
-      {status === 'error' && (
+      {isError && (
         <div className="absolute top-1/2 left-full ml-2 -translate-y-1/2 bg-destructive text-destructive-foreground text-[10px] uppercase font-bold px-2 py-1 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
           Execution Failed
         </div>
@@ -70,6 +82,12 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-primary/90 flex items-center gap-1.5 whitespace-nowrap animate-pulse">
           <Loader2 className="size-3 animate-spin" />
           Running...
+        </div>
+      )}
+      {status === 'retrying' && (
+        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-amber-500 flex items-center gap-1.5 whitespace-nowrap animate-pulse">
+          <RotateCw className="size-3 animate-spin" />
+          Retrying...
         </div>
       )}
     </div>

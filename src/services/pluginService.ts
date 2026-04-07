@@ -24,21 +24,56 @@ export async function fetchPluginCatalog(): Promise<PluginCatalogResponse> {
 export async function fetchPluginDetail(
   params: PluginDetailParams
 ): Promise<PluginDetailResponse> {
-  const queryParams: Record<string, string> = {
-    mode: params.mode,
-    name: params.name,
-  };
+  // Strategy pattern based on executionMode
+  switch (params.mode) {
+    case 'DynamicDll': {
+      // Rule 1: Load exactly compiled DLL by its Sha256 signature
+      if (params.sha256) {
+        const response = await apiClient.get<PluginDetailResponse>(`/plugins/details/by-sha256/${params.sha256}`);
+        return response.data;
+      }
+      
+      // Rule 2: Load DLL specs using its PackageId & Version
+      if (params.packageId && params.version) {
+        const response = await apiClient.get<PluginDetailResponse>('/plugins/details', {
+          params: {
+            mode: params.mode,
+            name: params.name,
+            packageId: params.packageId,
+            version: params.version,
+          },
+        });
+        return response.data;
+      }
 
-  // Only include packageId and version for non-BuiltIn plugins
-  if (params.mode !== 'BuiltIn') {
-    if (params.packageId) queryParams.packageId = params.packageId;
-    if (params.version) queryParams.version = params.version;
+      throw new Error(`[DynamicDll] Missing required load parameters. Need either 'sha256' or both 'packageId' and 'version'`);
+    }
+
+    case 'RemoteGrpc': {
+      // Future-proofing logic for RemoteGrpc (currently expects packageId & version)
+      const response = await apiClient.get<PluginDetailResponse>('/plugins/details', {
+        params: {
+          mode: params.mode,
+          name: params.name,
+          packageId: params.packageId,
+          version: params.version,
+        },
+      });
+      return response.data;
+    }
+
+    case 'BuiltIn':
+    default: {
+      // BuiltIn relies purely on mode and name
+      const response = await apiClient.get<PluginDetailResponse>('/plugins/details', {
+        params: {
+          mode: params.mode,
+          name: params.name,
+        },
+      });
+      return response.data;
+    }
   }
-
-  const response = await apiClient.get<PluginDetailResponse>('/plugins/details', {
-    params: queryParams,
-  });
-  return response.data;
 }
 
 /**

@@ -209,3 +209,6 @@ export const BottomLogPanel: React.FC<BottomLogPanelProps> = ({ visible, onClose
     </div>
   );
 };
+
+
+

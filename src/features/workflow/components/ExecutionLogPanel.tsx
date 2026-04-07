@@ -12,6 +12,7 @@ import {
   Workflow,
   Clock,
   Circle,
+  RotateCw,
 } from 'lucide-react';
 import { getNodeDefinition, catalogToNodeCategories } from '../nodeDefinitions';
 import { usePluginStore } from '@/stores/pluginStore';
@@ -74,6 +75,15 @@ export const ExecutionLogPanel: React.FC = () => {
           border: 'border-primary/30',
           label: 'Running',
           dotColor: 'bg-primary',
+        };
+      case 'retrying':
+        return {
+          icon: <RotateCw className="size-3.5 animate-spin" />,
+          color: 'text-amber-500',
+          bg: 'bg-amber-500/10',
+          border: 'border-amber-500/30',
+          label: 'Retrying',
+          dotColor: 'bg-amber-500',
         };
       case 'success':
       case 'completed':
@@ -190,7 +200,8 @@ export const ExecutionLogPanel: React.FC = () => {
                         isSelected
                           ? 'bg-primary/8 border border-primary/20 shadow-sm'
                           : 'hover:bg-muted/50 border border-transparent',
-                        log.status === 'running' && 'bg-primary/5 border-primary/15'
+                        log.status === 'running' && 'bg-primary/5 border-primary/15',
+                        log.status === 'retrying' && 'bg-amber-500/5 border-amber-500/15'
                       )}
                     >
                       {/* Step Number / Timeline Connector */}
@@ -369,6 +380,52 @@ export const ExecutionLogPanel: React.FC = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* Runtime Stream Logs */}
+                    {selectedLog.runtimeLogs && selectedLog.runtimeLogs.length > 0 && (
+                      <div className="space-y-1.5 mt-4 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-xs font-semibold flex items-center gap-1.5 text-blue-500/90 tracking-wide uppercase">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500/70 animate-pulse"></span>
+                            Live Runtime Logs
+                          </h5>
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {selectedLog.runtimeLogs.length} entries
+                          </span>
+                        </div>
+                        <div className="rounded-xl border border-border/50 bg-[#0f111a] shadow-inner flex flex-col overflow-hidden text-xs max-h-[300px]">
+                          <div className="bg-white/5 px-3 py-1.5 border-b border-white/5 shrink-0 flex gap-4 text-[10px] font-mono text-white/40">
+                             <span className="w-[120px]">TIMESTAMP</span>
+                             <span className="w-[60px]">LEVEL</span>
+                             <span>MESSAGE</span>
+                          </div>
+                          <ScrollArea className="flex-1 custom-scrollbar">
+                            <div className="p-2 space-y-1 font-mono">
+                              {selectedLog.runtimeLogs.map((rlog, i) => {
+                                const isErr = rlog.level === 'Error';
+                                const isWarn = rlog.level === 'Warning';
+                                const levelColor = isErr ? 'text-destructive' : isWarn ? 'text-amber-400' : 'text-blue-400';
+                                
+                                return (
+                                  <div key={i} className="flex items-start gap-4 hover:bg-white/5 px-2 py-1 rounded transition-colors group">
+                                    <span className="text-[10px] text-white/30 shrink-0 w-[120px] group-hover:text-white/50 transition-colors">
+                                      {rlog.timestamp ? new Date(rlog.timestamp).toLocaleTimeString() : ''}
+                                    </span>
+                                    <span className={cn('text-[10px] font-bold shrink-0 w-[60px] uppercase', levelColor)}>
+                                      {rlog.level}
+                                    </span>
+                                    <span className="text-white/80 whitespace-pre-wrap break-all leading-snug">
+                                      {rlog.message}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      </div>
+                    )}
+
 
                     {/* Error details if any */}
                     {(selectedLog.error || selectedLog.status === 'failed') && (

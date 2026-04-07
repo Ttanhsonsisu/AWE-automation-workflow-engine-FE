@@ -1,7 +1,7 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RotateCw } from 'lucide-react';
 
 export interface BaseNodeProps {
   id: string;
@@ -21,11 +21,14 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
 
   let statusRingClass = '';
   const isRunning = status === 'running';
+  const isRetrying = status === 'retrying';
   const isSuccess = status === 'success' || status === 'completed';
   const isError = status === 'error' || status === 'failed';
 
   if (isRunning) {
     statusRingClass = 'ring-[3px] ring-primary shadow-[0_0_25px_hsl(var(--primary)/0.5)] animate-pulse border-primary';
+  } else if (isRetrying) {
+    statusRingClass = 'ring-[3px] ring-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.5)] border-amber-500 animate-pulse';
   } else if (isSuccess) {
     statusRingClass = 'ring-2 ring-emerald-500 border-emerald-500';
   } else if (isError) {
@@ -44,6 +47,11 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
       {isRunning && (
         <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-primary">
           <Loader2 className="size-4 text-primary animate-spin" />
+        </div>
+      )}
+      {isRetrying && (
+        <div className="absolute -top-3 -right-3 bg-background rounded-full p-1 shadow-sm border border-amber-500">
+          <RotateCw className="size-4 text-amber-500 animate-spin" />
         </div>
       )}
       {isSuccess && (
@@ -74,6 +82,12 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-primary/90 flex items-center gap-1.5 whitespace-nowrap animate-pulse">
           <Loader2 className="size-3 animate-spin" />
           Running...
+        </div>
+      )}
+      {status === 'retrying' && (
+        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-amber-500 flex items-center gap-1.5 whitespace-nowrap animate-pulse">
+          <RotateCw className="size-3 animate-spin" />
+          Retrying...
         </div>
       )}
     </div>

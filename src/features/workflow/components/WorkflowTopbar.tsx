@@ -9,6 +9,17 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 
 import {
@@ -19,10 +30,14 @@ import {
   Loader2,
   Edit3,
   Zap,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { updateWorkflowDefinition } from '@/services/workflowService';
+import { updateWorkflowDefinition, startWorkflow } from '@/services/workflowService';
 import { toast } from 'sonner';
+
+import { useWorkflowRealtime } from '../hooks/useWorkflowRealtime';
 
 export const WorkflowTopbar: React.FC = () => {
   const navigate = useNavigate();
@@ -31,6 +46,7 @@ export const WorkflowTopbar: React.FC = () => {
     setWorkflowName,
     isSaved,
     isExecuting,
+    workflowExecutionStatus,
     undo,
     redo,
     canUndo,
@@ -46,6 +62,34 @@ export const WorkflowTopbar: React.FC = () => {
 
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = React.useState(false);
+
+  // Realtime hook integration
+  const [instanceId, setInstanceId] = React.useState<string | null>(null);
+  const { connectionStatus } = useWorkflowRealtime(instanceId);
+
+  // Run Workflow Dialog State
+  const [isRunDialogOpen, setIsRunDialogOpen] = React.useState(false);
+  const [jobName, setJobName] = React.useState('');
+  const [hasInput, setHasInput] = React.useState(false);
+  const [inputData, setInputData] = React.useState<{key: string, value: string}[]>([
+    { key: 'winnerName', value: 'test 123' },
+    { key: 'raceName', value: '123' }
+  ]);
+
+  const handleConfirmRun = () => {
+    setIsRunDialogOpen(false);
+    
+    // Prepare dynamic input data if enabled
+    const finalInputData = hasInput ? inputData.reduce((acc, curr) => {
+      if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
+      return acc;
+    }, {} as Record<string, any>) : undefined;
+
+    // Optional: Log it or use it in the simulated execution
+    console.log("Running Job:", jobName, "InputData:", finalInputData);
+
+    handleTestExecution(finalInputData);
+  };
 
   const handleSave = async () => {
     const store = useWorkflowStore.getState();
@@ -134,16 +178,21 @@ export const WorkflowTopbar: React.FC = () => {
     }
   };
 
-  const handleTestExecution = async () => {
+  const handleTestExecution = async (customInputPayload?: Record<string, any>) => {
     if (isExecuting) return;
     
     const store = useWorkflowStore.getState();
-    const { nodes, edges, updateNodeData } = store;
+    const { nodes, edges, updateNodeData, workflowId } = store;
     
     const startNode = nodes.find((n) => n.type === 'startNode');
 
     if (!startNode) {
       toast.warning("Thiếu Start Node", { description: "Không tìm thấy Start Node trên Canvas!" });
+      return;
+    }
+
+    if (!workflowId) {
+      toast.error("Lỗi Workflow", { description: "Không tìm thấy Workflow ID." });
       return;
     }
 
@@ -154,81 +203,35 @@ export const WorkflowTopbar: React.FC = () => {
     // Reset all nodes to idle
     nodes.forEach(n => updateNodeData(n.id, { status: 'idle' }));
 
-    // BFS simulation
-    let currentLevel = [startNode.id];
+    try {
+      const requestPayload = {
+        DefinitionId: workflowId,
+        JobName: jobName || workflowName || 'Untitled Workflow',
+        InputData: customInputPayload,
+        IsTest: true,
+        StopAtStepId: null
+      };
+      
+      const response = await startWorkflow(requestPayload);
+      if (response?.success) {
+        toast.success("Đã gửi yêu cầu chạy Workflow", {
+          description: `Tracking ID: ${response.data.trackingId}`
+        });
 
-    while (currentLevel.length > 0) {
-      // Set current level to running — create log entry once per node
-      currentLevel.forEach(id => {
-        updateNodeData(id, { status: 'running' });
-        
-        const node = nodes.find(n => n.id === id);
-        if (node) {
-          addExecutionLog({
-            id: `log-${id}`,
-            nodeId: id,
-            nodeLabel: (node.data.config?.nodeLabel as string) || (node.data.pluginMetadata?.displayName as string),
-            nodeType: node.data.pluginMetadata?.name as string,
-            status: 'running',
-            timestamp: new Date().toISOString(),
-          });
+        // Set instance ID to trigger SignalR connection
+        if (response.data.instanceId) {
+          setInstanceId(response.data.instanceId);
         }
-      });
-      
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // Update existing log entry in-place to completed
-      currentLevel.forEach(id => {
-        updateNodeData(id, { status: 'completed' }); // Note: you might also want to update the store typing for UI status if it expects 'success', but let's assume it accepts mapped strings. Wait, I should make sure updateNodeData works. Actually, it's just 'success' in ReactFlow nodes typically, but 'completed' is fine for generic.
-        
-        const node = nodes.find(n => n.id === id);
-        if (node) {
-          const duration = Math.floor(Math.random() * 500) + 100;
-          
-          // Generate realistic mock data based on user payload example
-          const mockInput = {
-            "Text": "Kết quả cuối cùng gửi từ thỏ là: Written to Console",
-            "Operation": "UPPER"
-          };
-          
-          const mockOutput = {
-            "result": "KẾT QUẢ CUỐI CÙNG GỬI TỪ THỎ LÀ: WRITTEN TO CONSOLE",
-            "originalLength": 51
-          };
-
-          const endTime = new Date();
-          const startTime = new Date(endTime.getTime() - duration);
-
-          upsertExecutionLog(id, {
-            status: 'completed',
-            duration,
-            timestamp: endTime.toISOString(),
-            startTime: startTime.toISOString(),
-            endTime: endTime.toISOString(),
-            inputData: mockInput,
-            outputData: mockOutput,
-            instanceId: "6cd2dca9-0918-455d-ab3c-1513837f9d0c"
-          });
-        }
-      });
-
-      // Find next level
-      const storeEdges = useWorkflowStore.getState().edges;
-      const nextLevel = storeEdges
-        .filter(e => currentLevel.includes(e.source))
-        .map(e => e.target);
-      
-      currentLevel = [...new Set(nextLevel)];
-    }
-
-    // Finished
-    setTimeout(() => {
+      } else {
+        toast.error("Khởi chạy thất bại", { description: "Không thể bắt đầu Workflow." });
+        setExecuting(false);
+        return;
+      }
+    } catch (error: any) {
+      toast.error("Lỗi khởi chạy", { description: error?.message || "Đã xảy ra lỗi khi gọi API Run Workflow." });
       setExecuting(false);
-      // Optional: reset edges animated state
-      useWorkflowStore.getState().edges.forEach(e => {
-        // XYFlow mutates the state if we replace it, but since setExecuting(false) runs it resets all animated
-      });
-    }, 500);
+      return;
+    }
   };
 
   return (
@@ -260,16 +263,51 @@ export const WorkflowTopbar: React.FC = () => {
           </div>
         </div>
 
-        {/* CENTER: Execution Mode Indicator */}
+        {/* CENTER: Execution Mode / SignalR Status Indicator */}
         <div className="flex-1 flex justify-center items-center">
             {canvasMode === 'execution' && (
-               <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold shadow-sm text-sm animate-in fade-in zoom-in duration-300">
+               <div className={cn(
+                 "flex items-center gap-2.5 px-4 py-1.5 rounded-full border shadow-sm text-sm font-bold animate-in fade-in zoom-in duration-300",
+                 connectionStatus === 'Connected' 
+                   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                   : connectionStatus === 'Reconnecting' || connectionStatus === 'Disconnected' && instanceId 
+                     ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                     : "bg-primary/10 text-primary border-primary/20"
+               )}>
                   <div className="relative flex size-2">
-                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></div>
-                    <div className="relative inline-flex rounded-full size-2 bg-primary"></div>
+                    {connectionStatus === 'Connected' ? (
+                      <>
+                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></div>
+                        <div className="relative inline-flex rounded-full size-2 bg-emerald-500"></div>
+                      </>
+                    ) : connectionStatus === 'Reconnecting' ? (
+                      <>
+                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></div>
+                        <div className="relative inline-flex rounded-full size-2 bg-amber-500"></div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></div>
+                        <div className="relative inline-flex rounded-full size-2 bg-primary"></div>
+                      </>
+                    )}
                   </div>
-                  Execution Mode
+                  {connectionStatus === 'Connected' ? 'Live Execution' : connectionStatus === 'Reconnecting' ? 'Reconnecting...' : 'Execution Mode'}
                </div>
+            )}
+            
+            {/* Global Execution Status Badge */}
+            {canvasMode === 'execution' && workflowExecutionStatus && (
+              <div className={cn(
+                "ml-3 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-sm animate-in fade-in zoom-in duration-300",
+                workflowExecutionStatus.toLowerCase() === 'completed' ? "bg-emerald-500 text-white" :
+                workflowExecutionStatus.toLowerCase() === 'failed' ? "bg-destructive text-destructive-foreground" :
+                workflowExecutionStatus.toLowerCase() === 'running' ? "bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" :
+                workflowExecutionStatus.toLowerCase() === 'suspended' ? "bg-amber-500 text-white" :
+                "bg-secondary text-secondary-foreground"
+              )}>
+                {workflowExecutionStatus}
+              </div>
             )}
         </div>
 
@@ -346,7 +384,10 @@ export const WorkflowTopbar: React.FC = () => {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={handleTestExecution}
+                onClick={() => {
+                  setJobName(workflowName || 'Untitled Workflow');
+                  setIsRunDialogOpen(true);
+                }}
                 disabled={isExecuting}
                 className="h-9 px-5 gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_4px_14px_0_rgba(229,114,43,0.3)] rounded-lg transition-all hover:scale-105 active:scale-95"
               >
@@ -368,6 +409,113 @@ export const WorkflowTopbar: React.FC = () => {
           </Tooltip>
         </div>
       </header>
+
+      {/* Run Workflow Dialog */}
+      <Dialog open={isRunDialogOpen} onOpenChange={setIsRunDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Run Workflow</DialogTitle>
+            <DialogDescription>
+              Configure the execution details before starting the workflow manually.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-5 py-2">
+            <div className="space-y-2 text-left">
+              <Label className="text-sm font-semibold">Job Name</Label>
+              <Input 
+                value={jobName} 
+                onChange={(e) => setJobName(e.target.value)} 
+                placeholder="Enter job name..." 
+                className="bg-secondary/30 focus-visible:ring-primary/50"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1 text-left">
+                  <Label className="text-sm font-semibold cursor-pointer" htmlFor="config-input">Configure Input Data</Label>
+                  <span className="text-xs text-muted-foreground mr-4">Provide dynamic execution variables that override default node inputs</span>
+                </div>
+                <Switch 
+                  id="config-input" 
+                  checked={hasInput} 
+                  onCheckedChange={setHasInput} 
+                  className="data-[state=checked]:bg-primary"
+                />
+              </div>
+
+              {hasInput && (
+                <div className="pt-2 border-t border-border/50 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center justify-between mb-3 text-left">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Variables</Label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setInputData([...inputData, { key: '', value: '' }])}
+                      className="h-7 px-2.5 text-xs font-semibold text-primary/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Plus className="size-3.5 mr-1" /> Add Field
+                    </Button>
+                  </div>
+                  
+                  {inputData.length > 0 ? (
+                    <div className="max-h-[220px] overflow-y-auto pr-2 -mr-2 space-y-2.5 custom-scrollbar">
+                      {inputData.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 group">
+                          <Input 
+                            placeholder="Key (e.g. winnerName)" 
+                            className="h-9 text-sm font-mono bg-background"
+                            value={item.key}
+                            onChange={(e) => {
+                              const newData = [...inputData];
+                              newData[idx].key = e.target.value;
+                              setInputData(newData);
+                            }}
+                          />
+                          <Input 
+                            placeholder="Value" 
+                            className="h-9 text-sm bg-background"
+                            value={item.value}
+                            onChange={(e) => {
+                              const newData = [...inputData];
+                              newData[idx].value = e.target.value;
+                              setInputData(newData);
+                            }}
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="size-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setInputData(inputData.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 px-4 text-center border-2 border-dashed border-border/50 rounded-lg bg-background/50">
+                      <p className="text-sm text-foreground/80 font-medium mb-1">No variables added</p>
+                      <p className="text-xs text-muted-foreground">Click "Add Field" to inject custom variables.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={() => setIsRunDialogOpen(false)} className="hover:bg-secondary">
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmRun} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95">
+              <Play className="size-4 mr-2 fill-current" />
+              Run Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 };

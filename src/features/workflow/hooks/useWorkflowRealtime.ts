@@ -42,8 +42,11 @@ export const useWorkflowRealtime = (instanceId: string | null) => {
       const state = useWorkflowStore.getState();
       const statusLower = payload.status.toLowerCase();
       
-      state.updateNodeData(payload.stepId, { status: statusLower });
-      state.upsertExecutionLog(payload.stepId, {
+      const targetNode = state.nodes.find(n => n.id === payload.stepId || n.data.config?.stepId === payload.stepId);
+      const nodeIdToUpdate = targetNode ? targetNode.id : payload.stepId;
+
+      state.updateNodeData(nodeIdToUpdate, { status: statusLower });
+      state.upsertExecutionLog(nodeIdToUpdate, {
         status: statusLower as any,
         timestamp: payload.timestamp,
       });
@@ -66,7 +69,10 @@ export const useWorkflowRealtime = (instanceId: string | null) => {
       console.log("[SignalR] WorkflowLogReceived", log);
       useWorkflowStore.setState((state) => {
         const logs = [...state.executionLogs];
-        const existingIndex = logs.findIndex(l => l.nodeId === log.stepId);
+        const targetNodeLog = state.nodes.find(n => n.id === log.stepId || n.data.config?.stepId === log.stepId);
+        const resolvedNodeId = targetNodeLog ? targetNodeLog.id : log.stepId;
+        
+        const existingIndex = logs.findIndex(l => l.nodeId === resolvedNodeId);
         
         if (existingIndex >= 0) {
           const currentRuntimeLogs = logs[existingIndex].runtimeLogs || [];
@@ -81,12 +87,11 @@ export const useWorkflowRealtime = (instanceId: string | null) => {
             };
           }
         } else {
-          const node = state.nodes.find(n => n.id === log.stepId);
           logs.push({
-            id: `log-${log.stepId}`,
-            nodeId: log.stepId,
-            nodeLabel: node?.data?.config?.nodeLabel || node?.data?.pluginMetadata?.displayName || log.stepId,
-            nodeType: node?.data?.pluginMetadata?.name || 'unknown',
+            id: `log-${resolvedNodeId}`,
+            nodeId: resolvedNodeId,
+            nodeLabel: targetNodeLog?.data?.config?.nodeLabel || targetNodeLog?.data?.pluginMetadata?.displayName || log.stepId,
+            nodeType: targetNodeLog?.data?.pluginMetadata?.name || 'unknown',
             status: 'running',
             timestamp: log.timestamp,
             runtimeLogs: [{ level: log.level, message: log.message, timestamp: log.timestamp }]

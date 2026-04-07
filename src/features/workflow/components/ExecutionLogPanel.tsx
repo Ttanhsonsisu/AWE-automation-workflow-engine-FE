@@ -28,6 +28,42 @@ export const ExecutionLogPanel: React.FC = () => {
   
   const [showInput, setShowInput] = useState(false);
   const [showOutput, setShowOutput] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const resizerRef = useRef<HTMLDivElement>(null);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const stopResizing = () => {
+    setIsResizing(false);
+  };
+
+  const resize = (e: MouseEvent) => {
+    if (isResizing) {
+      const newWidth = e.clientX;
+      if (newWidth > 200 && newWidth < 600) {
+        setSidebarWidth(newWidth);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+    } else {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing]);
 
   const toggleInput = () => {
     if (showInput && !showOutput) return; // Must show at least one
@@ -180,7 +216,10 @@ export const ExecutionLogPanel: React.FC = () => {
       ) : (
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
           {/* Left panel: Execution Step List */}
-          <div className="w-[320px] min-w-[320px] border-r border-border/50 flex flex-col bg-muted/5 z-0">
+          <div 
+            className="border-r border-border/50 flex flex-col bg-muted/5 z-0"
+            style={{ width: sidebarWidth, minWidth: 200, maxWidth: 600 }}
+          >
             <ScrollArea className="flex-1 min-h-0">
               <div className="p-2 space-y-0.5" ref={scrollRef}>
                 {executionLogs.map((log, index) => {
@@ -222,16 +261,16 @@ export const ExecutionLogPanel: React.FC = () => {
                       </div>
 
                       {/* Node Info */}
-                      <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium truncate leading-none">
+                      <div className="flex-1 min-w-0 flex items-center justify-between gap-2 overflow-hidden">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold truncate leading-tight">
                             {log.nodeLabel || log.nodeType}
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                            <Clock className="size-2.5 inline" />
-                            {new Date(log.timestamp).toLocaleTimeString()}
+                          <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1.5 opacity-80">
+                            <Clock className="size-2.5" />
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                             {log.duration !== undefined && (
-                              <span className="font-mono text-muted-foreground/70 ml-1">
+                              <span className="font-medium text-muted-foreground/60">
                                 · {log.duration}ms
                               </span>
                             )}
@@ -242,7 +281,7 @@ export const ExecutionLogPanel: React.FC = () => {
                         <Badge
                           variant="outline"
                           className={cn(
-                            'text-[9px] font-bold px-1.5 py-0 h-4 shrink-0 uppercase tracking-wider',
+                            'text-[9px] font-bold px-1.5 py-0 h-4 shrink-0 uppercase tracking-wider select-none',
                             statusConfig.color,
                             statusConfig.border,
                             statusConfig.bg
@@ -256,6 +295,18 @@ export const ExecutionLogPanel: React.FC = () => {
                 })}
               </div>
             </ScrollArea>
+          </div>
+
+          {/* Resizer Handle */}
+          <div
+            ref={resizerRef}
+            onMouseDown={startResizing}
+            className={cn(
+              "w-1.5 h-full cursor-col-resize hover:bg-primary/30 transition-colors z-10 -ml-0.5 relative group",
+              isResizing && "bg-primary/50"
+            )}
+          >
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-border group-hover:bg-primary/50" />
           </div>
 
           {/* Right panel: Details view */}

@@ -44,3 +44,14 @@ export async function startWorkflow(payload: StartWorkflowPayload) {
   const response = await apiClient.post('/workflows', payload);
   return response.data;
 }
+
+export async function suspendExecution(instanceId: string) {
+  const response = await apiClient.post(`/executions/${instanceId}/suspend`);
+  return response.data;
+}
+
+export async function resumeExecution(instanceId: string) {
+  const response = await apiClient.post(`/executions/${instanceId}/resume`);
+  return response.data;
+}
+

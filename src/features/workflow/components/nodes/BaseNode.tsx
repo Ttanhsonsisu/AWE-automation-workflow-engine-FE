@@ -76,7 +76,7 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
           Execution Failed
         </div>
       )}
-      
+
       {/* Running Title Below Node */}
       {status === 'running' && (
         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[11px] font-semibold text-primary/90 flex items-center gap-1.5 whitespace-nowrap animate-pulse">
@@ -94,9 +94,9 @@ export const BaseNode: React.FC<BaseNodeProps> = ({
   );
 };
 
-export const CustomHandle: React.FC<React.ComponentProps<typeof Handle> & { hideUnlessHovered_or_Connected?: boolean }> = ({ 
-  className, 
-  ...props 
+export const CustomHandle: React.FC<React.ComponentProps<typeof Handle> & { hideUnlessHovered_or_Connected?: boolean }> = ({
+  className,
+  ...props
 }) => {
   return (
     <Handle

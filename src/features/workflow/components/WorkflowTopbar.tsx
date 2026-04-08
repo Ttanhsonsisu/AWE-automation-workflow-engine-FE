@@ -32,9 +32,11 @@ import {
   Zap,
   Plus,
   Trash2,
+  Pause,
+  PlayCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { updateWorkflowDefinition, startWorkflow } from '@/services/workflowService';
+import { updateWorkflowDefinition, startWorkflow, suspendExecution, resumeExecution } from '@/services/workflowService';
 import { toast } from 'sonner';
 
 import { useWorkflowRealtime } from '../hooks/useWorkflowRealtime';
@@ -58,6 +60,7 @@ export const WorkflowTopbar: React.FC = () => {
     addExecutionLog,
     upsertExecutionLog,
     clearExecutionLogs,
+    setWorkflowExecutionStatus,
   } = useWorkflowStore();
 
   const queryClient = useQueryClient();
@@ -199,6 +202,7 @@ export const WorkflowTopbar: React.FC = () => {
     clearExecutionLogs();
     setCanvasMode('execution'); // Auto switch to execution mode
     setExecuting(true);
+    setWorkflowExecutionStatus('running');
 
     // Reset all nodes to idle
     nodes.forEach(n => updateNodeData(n.id, { status: 'idle' }));
@@ -231,6 +235,30 @@ export const WorkflowTopbar: React.FC = () => {
       toast.error("Lỗi khởi chạy", { description: error?.message || "Đã xảy ra lỗi khi gọi API Run Workflow." });
       setExecuting(false);
       return;
+    }
+  };
+
+  const handleSuspend = async () => {
+    if (!instanceId) return;
+    try {
+      await suspendExecution(instanceId);
+      setExecuting(false);
+      setWorkflowExecutionStatus('suspended');
+      toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng."});
+    } catch (error: any) {
+      toast.error("Tạm dừng thất bại", { description: error?.response?.data?.message || error?.message || "Không thể suspend." });
+    }
+  };
+
+  const handleResume = async () => {
+    if (!instanceId) return;
+    try {
+      await resumeExecution(instanceId);
+      setExecuting(true);
+      setWorkflowExecutionStatus('running');
+      toast.success("Đã gửi lệnh Resume", { description: "Workflow sẽ tiếp tục chạy."});
+    } catch (error: any) {
+      toast.error("Tiếp tục thất bại", { description: error?.response?.data?.message || error?.message || "Không thể resume." });
     }
   };
 
@@ -299,12 +327,12 @@ export const WorkflowTopbar: React.FC = () => {
             {/* Global Execution Status Badge */}
             {canvasMode === 'execution' && workflowExecutionStatus && (
               <div className={cn(
-                "ml-3 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider shadow-sm animate-in fade-in zoom-in duration-300",
-                workflowExecutionStatus.toLowerCase() === 'completed' ? "bg-emerald-500 text-white" :
-                workflowExecutionStatus.toLowerCase() === 'failed' ? "bg-destructive text-destructive-foreground" :
-                workflowExecutionStatus.toLowerCase() === 'running' ? "bg-blue-500 text-white shadow-[0_0_8px_rgba(59,130,246,0.6)] animate-pulse" :
-                workflowExecutionStatus.toLowerCase() === 'suspended' ? "bg-amber-500 text-white" :
-                "bg-secondary text-secondary-foreground"
+                "ml-3 px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider animate-in fade-in zoom-in duration-300 border-2 select-none",
+                workflowExecutionStatus.toLowerCase() === 'completed' ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30 dark:text-emerald-400" :
+                workflowExecutionStatus.toLowerCase() === 'failed' ? "bg-destructive/15 text-destructive border-destructive/30" :
+                workflowExecutionStatus.toLowerCase() === 'running' ? "bg-blue-500/15 text-blue-600 border-blue-500/30 dark:text-blue-400" :
+                workflowExecutionStatus.toLowerCase() === 'suspended' ? "bg-amber-500/15 text-amber-600 border-amber-500/30 dark:text-amber-400" :
+                "bg-secondary/50 text-muted-foreground border-border/50"
               )}>
                 {workflowExecutionStatus}
               </div>
@@ -380,33 +408,65 @@ export const WorkflowTopbar: React.FC = () => {
             </Tooltip>
           </div>
 
-          {/* Run Button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => {
-                  setJobName(workflowName || 'Untitled Workflow');
-                  setIsRunDialogOpen(true);
-                }}
-                disabled={isExecuting}
-                className="h-9 px-5 gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-[0_4px_14px_0_rgba(229,114,43,0.3)] rounded-lg transition-all hover:scale-105 active:scale-95"
-              >
-                {isExecuting ? (
-                  <>
+          {/* Control Buttons Group */}
+          <div className="flex items-center gap-2">
+            {!isExecuting && workflowExecutionStatus?.toLowerCase() === 'suspended' && instanceId && canvasMode === 'execution' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleResume}
+                    className="h-9 px-4 gap-2 bg-blue-500 hover:bg-blue-600 text-white shadow-[0_4px_14px_0_rgba(59,130,246,0.3)] rounded-lg transition-all hover:scale-105 active:scale-95 animate-in fade-in zoom-in"
+                  >
+                    <PlayCircle className="size-4 fill-white text-blue-500" />
+                    <span className="font-semibold text-sm">Resume</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Tiếp tục chạy workflow bị tạm dừng</TooltipContent>
+              </Tooltip>
+            ) : isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' && instanceId && canvasMode === 'execution' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleSuspend}
+                    className="h-9 px-4 gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-[0_4px_14px_0_rgba(245,158,11,0.3)] rounded-lg transition-all hover:scale-105 active:scale-95 animate-in fade-in zoom-in"
+                  >
+                    <Pause className="size-4 fill-white text-amber-500" />
+                    <span className="font-semibold text-sm">Suspend</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Tạm dừng workflow đang chạy</TooltipContent>
+              </Tooltip>
+            ) : null}
+
+            {/* Run Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() => {
+                    setJobName(workflowName || 'Untitled Workflow');
+                    setIsRunDialogOpen(true);
+                  }}
+                  disabled={isExecuting}
+                  className={cn(
+                    "h-9 gap-2 shadow-[0_4px_14px_0_rgba(229,114,43,0.3)] rounded-lg transition-all hover:scale-105 active:scale-95",
+                    isExecuting ? "px-3 bg-primary/80 cursor-not-allowed" : "px-5 bg-primary hover:bg-primary/90 text-primary-foreground"
+                  )}
+                >
+                  {isExecuting ? (
                     <Loader2 className="size-4 animate-spin text-white" />
-                  </>
-                ) : (
-                  <>
-                    <Play className="size-4 fill-white text-white" />
-                    <span className="font-semibold text-sm">Run</span>
-                  </>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {isExecuting ? 'Workflow is running...' : 'Simulate Workflow Execution'}
-            </TooltipContent>
-          </Tooltip>
+                  ) : (
+                    <>
+                      <Play className="size-4 fill-white text-white" />
+                      <span className="font-semibold text-sm">Run</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isExecuting ? 'Workflow đang chạy...' : 'Khởi chạy luồng Workflow mới'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </header>
 

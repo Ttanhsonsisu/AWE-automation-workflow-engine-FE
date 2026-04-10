@@ -103,6 +103,7 @@ interface WorkflowState {
   
   canvasMode: 'editor' | 'execution';
   executionLogs: ExecutionLogItem[];
+  currentInstanceId: string | null;
 
   // Graph
   nodes: WorkflowNode[];
@@ -165,6 +166,7 @@ interface WorkflowState {
   updateExecutionLog: (id: string, logUpdate: Partial<ExecutionLogItem>) => void;
   clearExecutionLogs: () => void;
   setWorkflowExecutionStatus: (status: string | null) => void;
+  setCurrentInstanceId: (instanceId: string | null) => void;
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -176,6 +178,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflowExecutionStatus: null,
   canvasMode: 'editor',
   executionLogs: [],
+  currentInstanceId: null,
   nodes: [],
   edges: [],
   history: [],
@@ -419,4 +422,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearExecutionLogs: () => set({ executionLogs: [], workflowExecutionStatus: null }),
 
   setWorkflowExecutionStatus: (status) => set({ workflowExecutionStatus: status }),
+
+  setCurrentInstanceId: (instanceId) => set({ currentInstanceId: instanceId }),
 }));

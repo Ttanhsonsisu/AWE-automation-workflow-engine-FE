@@ -61,14 +61,15 @@ export const WorkflowTopbar: React.FC = () => {
     upsertExecutionLog,
     clearExecutionLogs,
     setWorkflowExecutionStatus,
+    setCurrentInstanceId,
+    currentInstanceId,
   } = useWorkflowStore();
 
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = React.useState(false);
 
   // Realtime hook integration
-  const [instanceId, setInstanceId] = React.useState<string | null>(null);
-  const { connectionStatus } = useWorkflowRealtime(instanceId);
+  const { connectionStatus } = useWorkflowRealtime(currentInstanceId);
 
   // Run Workflow Dialog State
   const [isRunDialogOpen, setIsRunDialogOpen] = React.useState(false);
@@ -200,6 +201,7 @@ export const WorkflowTopbar: React.FC = () => {
     }
 
     clearExecutionLogs();
+    setCurrentInstanceId(null);
     setCanvasMode('execution'); // Auto switch to execution mode
     setExecuting(true);
     setWorkflowExecutionStatus('running');
@@ -224,7 +226,7 @@ export const WorkflowTopbar: React.FC = () => {
 
         // Set instance ID to trigger SignalR connection
         if (response.data.instanceId) {
-          setInstanceId(response.data.instanceId);
+          setCurrentInstanceId(response.data.instanceId);
         }
       } else {
         toast.error("Khởi chạy thất bại", { description: "Không thể bắt đầu Workflow." });
@@ -239,9 +241,9 @@ export const WorkflowTopbar: React.FC = () => {
   };
 
   const handleSuspend = async () => {
-    if (!instanceId) return;
+    if (!currentInstanceId) return;
     try {
-      await suspendExecution(instanceId);
+      await suspendExecution(currentInstanceId);
       setExecuting(false);
       setWorkflowExecutionStatus('suspended');
       toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng."});
@@ -251,9 +253,9 @@ export const WorkflowTopbar: React.FC = () => {
   };
 
   const handleResume = async () => {
-    if (!instanceId) return;
+    if (!currentInstanceId) return;
     try {
-      await resumeExecution(instanceId);
+      await resumeExecution(currentInstanceId);
       setExecuting(true);
       setWorkflowExecutionStatus('running');
       toast.success("Đã gửi lệnh Resume", { description: "Workflow sẽ tiếp tục chạy."});
@@ -298,7 +300,7 @@ export const WorkflowTopbar: React.FC = () => {
                  "flex items-center gap-2.5 px-4 py-1.5 rounded-full border shadow-sm text-sm font-bold animate-in fade-in zoom-in duration-300",
                  connectionStatus === 'Connected' 
                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                   : connectionStatus === 'Reconnecting' || connectionStatus === 'Disconnected' && instanceId 
+                   : connectionStatus === 'Reconnecting' || connectionStatus === 'Disconnected' && currentInstanceId 
                      ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
                      : "bg-primary/10 text-primary border-primary/20"
                )}>
@@ -410,7 +412,7 @@ export const WorkflowTopbar: React.FC = () => {
 
           {/* Control Buttons Group */}
           <div className="flex items-center gap-2">
-            {!isExecuting && workflowExecutionStatus?.toLowerCase() === 'suspended' && instanceId && canvasMode === 'execution' ? (
+            {!isExecuting && workflowExecutionStatus?.toLowerCase() === 'suspended' && currentInstanceId && canvasMode === 'execution' ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -423,7 +425,7 @@ export const WorkflowTopbar: React.FC = () => {
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Tiếp tục chạy workflow bị tạm dừng</TooltipContent>
               </Tooltip>
-            ) : isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' && instanceId && canvasMode === 'execution' ? (
+            ) : isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' && currentInstanceId && canvasMode === 'execution' ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

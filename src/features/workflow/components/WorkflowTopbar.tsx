@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useBlocker } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,8 @@ import {
   Plus,
   Trash2,
   Pause,
-  PlayCircle
+  PlayCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateWorkflowDefinition, startWorkflow, suspendExecution, resumeExecution } from '@/services/workflowService';
@@ -71,6 +72,71 @@ export const WorkflowTopbar: React.FC = () => {
   // Realtime hook integration
   const { connectionStatus } = useWorkflowRealtime(currentInstanceId);
 
+  // Exit Dialog State
+  const [isExitDialogOpen, setIsExitDialogOpen] = React.useState(false);
+  const [isExiting, setIsExiting] = React.useState(false);
+
+  // Use blocker to prevent navigation when workflow is running or has unsaved changes
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      (
+        (isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' && currentInstanceId !== null) ||
+        !isSaved
+      ) && 
+      currentLocation.pathname !== nextLocation.pathname
+  );
+
+  React.useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setIsExitDialogOpen(true);
+    }
+  }, [blocker.state]);
+
+  // Handle browser tab closing or external navigation
+  React.useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isExecuting && workflowExecutionStatus?.toLowerCase() === 'running') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isExecuting, workflowExecutionStatus]);
+
+  const handleBackClick = () => {
+    navigate('/workflows');
+  };
+
+  const handleExitConfirm = async () => {
+    setIsExiting(true);
+    if (currentInstanceId) {
+      try {
+        await suspendExecution(currentInstanceId);
+        setExecuting(false);
+        setWorkflowExecutionStatus('suspended');
+        toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng trước khi thoát."});
+      } catch (error: any) {
+        toast.error("Tạm dừng thất bại", { description: error?.response?.data?.message || error?.message || "Không thể suspend." });
+      }
+    }
+    
+    setIsExiting(false);
+    setIsExitDialogOpen(false);
+    if (blocker.state === 'blocked') {
+      blocker.proceed();
+    } else {
+      navigate('/workflows');
+    }
+  };
+
+  const handleExitCancel = () => {
+    setIsExitDialogOpen(false);
+    if (blocker.state === 'blocked') {
+      blocker.reset();
+    }
+  };
+
   // Run Workflow Dialog State
   const [isRunDialogOpen, setIsRunDialogOpen] = React.useState(false);
   const [jobName, setJobName] = React.useState('');
@@ -95,7 +161,7 @@ export const WorkflowTopbar: React.FC = () => {
     handleTestExecution(finalInputData);
   };
 
-  const handleSave = async () => {
+  const handleSave = React.useCallback(async () => {
     const store = useWorkflowStore.getState();
     const { nodes, edges, workflowName, workflowId } = store;
 
@@ -180,7 +246,31 @@ export const WorkflowTopbar: React.FC = () => {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [workflowName, markSaved, queryClient]);
+
+  // Keyboard Shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S to Save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      // Ctrl+Z to Undo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo();
+      }
+      // Ctrl+Y to Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave, undo, redo]);
 
   const handleTestExecution = async (customInputPayload?: Record<string, any>) => {
     if (isExecuting) return;
@@ -274,7 +364,7 @@ export const WorkflowTopbar: React.FC = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate('/workflows')}
+                onClick={handleBackClick}
                 className="size-8 text-muted-foreground hover:text-foreground hover:bg-secondary"
               >
                 <ArrowLeft className="size-4" />
@@ -286,7 +376,7 @@ export const WorkflowTopbar: React.FC = () => {
           <div className="flex flex-col gap-1 w-64">
              <h1 className="text-[18px] font-bold text-foreground leading-none tracking-tight">Workflow Builder</h1>
              <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground mt-1">
-               <span className="hover:text-primary cursor-pointer transition-colors">Workflows</span>
+                              <span onClick={handleBackClick} className="hover:text-primary cursor-pointer transition-colors">Workflows</span>
                <span className="text-border">/</span>
                <span className="text-foreground truncate max-w-[150px]">{workflowName || 'Customer Onboarding'}</span>
              </div>
@@ -574,6 +664,46 @@ export const WorkflowTopbar: React.FC = () => {
             <Button onClick={handleConfirmRun} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95">
               <Play className="size-4 mr-2 fill-current" />
               Run Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Exit Warning Dialog */}
+      <Dialog open={isExitDialogOpen} onOpenChange={setIsExitDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="size-5" />
+              {isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' 
+                ? 'Cảnh báo Workflow đang chạy' 
+                : 'Thay đổi chưa được lưu'}
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-foreground/80">
+              {isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' ? (
+                <>
+                  Bạn đang có một phiên Workflow đang chạy. Nếu thoát ra ngoài lúc này, hệ thống sẽ tự động gọi lệnh <strong className="text-destructive font-semibold">Tạm dừng (Suspend)</strong> đối với instance hiện tại.
+                </>
+              ) : (
+                'Bạn đã thực hiện một số thay đổi trên Canvas nhưng chưa lưu. Những thay đổi này sẽ bị mất nếu bạn rời khỏi trang.'
+              )}
+              <br /><br />
+              Bạn có chắc chắn muốn thoát?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={handleExitCancel}>
+              Ở lại
+            </Button>
+            <Button variant="destructive" onClick={handleExitConfirm} disabled={isExiting}>
+              {isExiting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang xử lý...
+                </>
+              ) : (
+                isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' ? 'Thoát và Suspend' : 'Thoát không lưu'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -55,3 +55,14 @@ export async function resumeExecution(instanceId: string) {
   return response.data;
 }
 
+export async function getStepExecutionDetail(instanceId: string, stepId: string) {
+  // Using GET as it is a fetch operation for details
+  const response = await apiClient.get(`/workflows/${instanceId}/steps/${stepId}`);
+  return response.data;
+}
+
+export async function getWorkflowContext(instanceId: string) {
+  const response = await apiClient.get(`/workflows/${instanceId}/context`);
+  return response.data;
+}
+

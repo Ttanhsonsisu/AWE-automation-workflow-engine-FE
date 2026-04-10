@@ -33,7 +33,7 @@ export function usePluginDetail(
   // Validation: prevent hitting backend with incomplete params
   const canFetch = (() => {
     if (!executionMode) {
-      console.warn('[usePluginDetail] Missing executionMode - skipping fetch');
+      // console.warn('[usePluginDetail] Missing executionMode - skipping fetch');
       return false;
     }
     

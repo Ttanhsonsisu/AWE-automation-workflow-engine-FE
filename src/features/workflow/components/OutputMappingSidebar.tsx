@@ -31,6 +31,21 @@ import {
   Code2,
   TreePine,
 } from 'lucide-react';
+import { useWorkflowStore } from '@/stores/workflowStore';
+import { startWorkflow, getWorkflowContext } from '@/services/workflowService';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Plus, Trash2 } from 'lucide-react';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants
@@ -498,11 +513,21 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
   isOpen,
   onToggle,
 }) => {
+  const { workflowId, workflowName, workflowExecutionStatus, setCurrentInstanceId, currentInstanceId, setExecuting, clearExecutionLogs, setWorkflowExecutionStatus, nodes } = useWorkflowStore();
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [isLoading, setIsLoading] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
-  const [hasData, setHasData] = useState(true);
-  const [executionData, setExecutionData] = useState<Record<string, unknown> | null>(MOCK_EXECUTION_DATA);
+  const [hasData, setHasData] = useState(false);
+  const [executionData, setExecutionData] = useState<Record<string, unknown> | null>(null);
+
+  // Run Workflow Dialog State
+  const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
+  const [jobName, setJobName] = useState(workflowName || 'Test Run Previous');
+  const [hasInput, setHasInput] = useState(false);
+  const [inputData, setInputData] = useState<{key: string, value: string}[]>([
+    { key: 'winnerName', value: 'test 123' },
+    { key: 'raceName', value: '123' }
+  ]);
 
   const metaTree = useMemo(
     () => executionData?.Meta ? dataToTree(executionData.Meta, 'Meta') : [],
@@ -517,23 +542,100 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
   const stepsData = (executionData?.Steps || {}) as Record<string, Record<string, unknown>>;
   const stepIds = Object.keys(stepsData);
 
-  const handleReload = useCallback(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setExecutionData(MOCK_EXECUTION_DATA);
-      setHasData(true);
-      setIsLoading(false);
-    }, 800);
-  }, []);
+  // Auto-fetch context when workflow finishes execution and we started it
+  React.useEffect(() => {
+    if (isExecuting && currentInstanceId && workflowExecutionStatus) {
+      const statusLower = workflowExecutionStatus.toLowerCase();
+      if (['suspended', 'completed', 'failed'].includes(statusLower)) {
+        setIsExecuting(false);
+        setIsLoading(true);
+        getWorkflowContext(currentInstanceId)
+          .then(res => {
+            if (res.success) {
+              setExecutionData(res.data);
+              setHasData(true);
+            }
+          })
+          .catch(err => {
+            toast.error("Lỗi tải data", { description: "Không thể lấy output context" });
+          })
+          .finally(() => {
+            setIsLoading(false);
+          });
+      }
+    }
+  }, [workflowExecutionStatus, isExecuting, currentInstanceId]);
 
-  const handleExecute = useCallback(() => {
-    setIsExecuting(true);
-    setTimeout(() => {
-      setExecutionData(MOCK_EXECUTION_DATA);
-      setHasData(true);
+  const handleReload = useCallback(async () => {
+    if (!currentInstanceId) return;
+    setIsLoading(true);
+    try {
+      const res = await getWorkflowContext(currentInstanceId);
+      if (res.success) {
+        setExecutionData(res.data);
+        setHasData(true);
+      }
+    } catch {
+       toast.error("Lỗi tải data", { description: "Không thể lấy output context" });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentInstanceId]);
+
+  const handleConfirmRun = async () => {
+    if (!workflowId) {
+      toast.error("Lỗi Workflow", { description: "Không tìm thấy Workflow ID." });
+      return;
+    }
+
+    setIsRunDialogOpen(false);
+    
+    // Prepare dynamic input data if enabled
+    const finalInputData = hasInput ? inputData.reduce((acc, curr) => {
+      if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
+      return acc;
+    }, {} as Record<string, any>) : undefined;
+
+    clearExecutionLogs();
+    setCurrentInstanceId(null);
+    setExecuting(true);
+    setWorkflowExecutionStatus('running');
+    setIsExecuting(true); // local loading state
+
+    // Determine actual stepId if configured, fallback to internal nodeId
+    const currentNode = nodes.find(n => n.id === nodeId);
+    const stepIdToStop = (currentNode?.data?.config?.stepId as string) || nodeId;
+
+    try {
+      const requestPayload = {
+        DefinitionId: workflowId,
+        JobName: jobName || workflowName || 'Untitled Workflow',
+        InputData: finalInputData,
+        IsTest: true,
+        StopAtStepId: stepIdToStop
+      };
+      
+      const response = await startWorkflow(requestPayload);
+      if (response?.success) {
+        toast.success("Đã chạy thử luồng", {
+          description: `Dừng tại node: ${stepIdToStop}`
+        });
+
+        // Trigger SignalR connection via top bar context
+        if (response.data.instanceId) {
+          setCurrentInstanceId(response.data.instanceId);
+        }
+      } else {
+        toast.error("Khởi chạy thất bại", { description: "Không thể bắt đầu Workflow." });
+        setIsExecuting(false);
+        setExecuting(false);
+      }
+    } catch (error: any) {
+      toast.error("Lỗi khởi chạy", { description: error?.message || "Đã xảy ra lỗi khi gọi API Run Workflow." });
       setIsExecuting(false);
-    }, 1500);
-  }, []);
+      setExecuting(false);
+    }
+  };
 
   return (
     <>
@@ -594,7 +696,7 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExecute}
+              onClick={() => setIsRunDialogOpen(true)}
               disabled={isExecuting || isLoading}
               className="h-7 flex-1 gap-1.5 text-[11px] rounded-md border-border/40 hover:border-primary/30 hover:bg-primary/5 hover:text-primary transition-all"
             >
@@ -742,6 +844,113 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
           </p>
         </div>
       </div>
+
+      {/* Run Workflow Dialog */}
+      <Dialog open={isRunDialogOpen} onOpenChange={setIsRunDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Chạy từ đầu đến đây</DialogTitle>
+            <DialogDescription>
+              Cấu hình các tham số và biến truyền vào trước khi chạy luồng để kiểm tra kết quả trả ra.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-5 py-2">
+            <div className="space-y-2 text-left">
+              <Label className="text-sm font-semibold">Tên phiên chạy (Job Name)</Label>
+              <Input 
+                value={jobName} 
+                onChange={(e) => setJobName(e.target.value)} 
+                placeholder="Nhập tên phiên chạy..." 
+                className="bg-secondary/30 focus-visible:ring-primary/50"
+              />
+            </div>
+
+            <div className="flex flex-col gap-4 p-4 rounded-xl border border-border/50 bg-secondary/10 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1 text-left">
+                  <Label className="text-sm font-semibold cursor-pointer" htmlFor="config-input">Cấu hình tham số Input</Label>
+                  <span className="text-xs text-muted-foreground mr-4">Truyền biến động vào payload cho workflow nhận khi chạy</span>
+                </div>
+                <Switch 
+                  id="config-input" 
+                  checked={hasInput} 
+                  onCheckedChange={setHasInput} 
+                  className="data-[state=checked]:bg-primary"
+                />
+              </div>
+
+              {hasInput && (
+                <div className="pt-2 border-t border-border/50 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex items-center justify-between mb-3 text-left">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Biến Input</Label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setInputData([...inputData, { key: '', value: '' }])}
+                      className="h-7 px-2.5 text-xs font-semibold text-primary/80 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Plus className="size-3.5 mr-1" /> Thêm biến
+                    </Button>
+                  </div>
+                  
+                  {inputData.length > 0 ? (
+                    <div className="max-h-[220px] overflow-y-auto pr-2 -mr-2 space-y-2.5 custom-scrollbar">
+                      {inputData.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 group">
+                          <Input 
+                            placeholder="Key" 
+                            className="h-9 text-sm font-mono bg-background"
+                            value={item.key}
+                            onChange={(e) => {
+                              const newData = [...inputData];
+                              newData[idx].key = e.target.value;
+                              setInputData(newData);
+                            }}
+                          />
+                          <Input 
+                            placeholder="Value" 
+                            className="h-9 text-sm bg-background"
+                            value={item.value}
+                            onChange={(e) => {
+                              const newData = [...inputData];
+                              newData[idx].value = e.target.value;
+                              setInputData(newData);
+                            }}
+                          />
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="size-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setInputData(inputData.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-6 px-4 text-center border-2 border-dashed border-border/50 rounded-lg bg-background/50">
+                      <p className="text-sm text-foreground/80 font-medium mb-1">Chưa có biến nào</p>
+                      <p className="text-xs text-muted-foreground">Bấm "Thêm biến" để bắt đầu cấu hình.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={() => setIsRunDialogOpen(false)} className="hover:bg-secondary">
+              Hủy
+            </Button>
+            <Button onClick={handleConfirmRun} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95">
+              <Play className="size-4 mr-2 fill-current" />
+              Bắt đầu chạy
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

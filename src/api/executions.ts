@@ -1,47 +1,72 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ExecutionLog } from '@/types';
+import apiClient from '@/services/apiClient';
+import { startOfDay, endOfDay, parseISO } from 'date-fns';
+import type { 
+  ExecutionPagedResponse, 
+  ExecutionFilters, 
+  WorkflowDefinitionDropdownItem, 
+  StatusDropdownItem 
+} from '@/types/execution';
 
-const mockExecutions: ExecutionLog[] = [
-  {
-    id: 'exec-001',
-    workflowId: 'demo-123',
-    workflowName: 'Customer Onboarding',
-    status: 'Success',
-    startedAt: new Date(Date.now() - 120000).toISOString(),
-    completedAt: new Date(Date.now() - 118000).toISOString(),
-    durationMs: 2000,
-    triggerType: 'Webhook',
-    steps: [],
-  },
-  {
-    id: 'exec-002',
-    workflowId: 'sync-456',
-    workflowName: 'Daily DB Backup',
-    status: 'Failed',
-    startedAt: new Date(Date.now() - 86400000).toISOString(),
-    completedAt: new Date(Date.now() - 86395000).toISOString(),
-    durationMs: 5000,
-    triggerType: 'Schedule',
-    steps: [],
-  },
-  {
-    id: 'exec-003',
-    workflowId: 'demo-123',
-    workflowName: 'Customer Onboarding',
-    status: 'Running',
-    startedAt: new Date().toISOString(),
-    triggerType: 'Manual',
-    steps: [],
-  },
-];
+export const fetchExecutions = async (filters: ExecutionFilters): Promise<ExecutionPagedResponse> => {
+  // Create a copy of filters to avoid mutating the state
+  const params: any = { ...filters };
 
-export const fetchExecutions = async (): Promise<ExecutionLog[]> => {
-  return new Promise((resolve) => setTimeout(() => resolve(mockExecutions), 500));
+  // Convert date strings to UTC ISO strings
+  // When a user selects a date like "2026-04-10", they mean that day in their local time.
+  // We convert it to the beginning/end of that local day and then to UTC ISO string.
+  
+  if (params.createdFrom) {
+    params.createdFrom = startOfDay(parseISO(params.createdFrom)).toISOString();
+  }
+  if (params.createdTo) {
+    params.createdTo = endOfDay(parseISO(params.createdTo)).toISOString();
+  }
+  if (params.startTimeFrom) {
+    params.startTimeFrom = startOfDay(parseISO(params.startTimeFrom)).toISOString();
+  }
+  if (params.startTimeTo) {
+    params.startTimeTo = endOfDay(parseISO(params.startTimeTo)).toISOString();
+  }
+
+  // Clean up null/undefined values and empty arrays
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([_, v]) => v != null && v !== '')
+  );
+
+  const { data } = await apiClient.get('/executions', {
+    params: cleanParams
+  });
+  return data.data;
 };
 
-export const useExecutions = () => {
+export const useExecutions = (filters: ExecutionFilters) => {
   return useQuery({
-    queryKey: ['executions'],
-    queryFn: fetchExecutions,
+    queryKey: ['executions', filters],
+    queryFn: () => fetchExecutions(filters),
+  });
+};
+
+export const fetchWorkflowDefinitionsDropdown = async (): Promise<WorkflowDefinitionDropdownItem[]> => {
+  const { data } = await apiClient.get('/dropdown/workflow-definition');
+  return data.data;
+};
+
+export const useWorkflowDefinitionsDropdown = () => {
+  return useQuery({
+    queryKey: ['dropdown', 'workflow-definitions'],
+    queryFn: fetchWorkflowDefinitionsDropdown,
+  });
+};
+
+export const fetchWorkflowInstanceStatusDropdown = async (): Promise<StatusDropdownItem[]> => {
+  const { data } = await apiClient.get('/dropdown/workflow-instance-status');
+  return data.data;
+};
+
+export const useWorkflowInstanceStatusDropdown = () => {
+  return useQuery({
+    queryKey: ['dropdown', 'workflow-instance-status'],
+    queryFn: fetchWorkflowInstanceStatusDropdown,
   });
 };

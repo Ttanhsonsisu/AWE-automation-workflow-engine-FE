@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/services/apiClient';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 import type { 
@@ -70,3 +70,53 @@ export const useWorkflowInstanceStatusDropdown = () => {
     queryFn: fetchWorkflowInstanceStatusDropdown,
   });
 };
+
+// ─── Execution Action Mutations ───────────────────────────────────
+
+import {
+  retryExecution,
+  suspendExecution,
+  resumeExecution,
+  cancelExecution,
+} from '@/services/workflowService';
+
+export const useRetryExecution = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => retryExecution(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+    },
+  });
+};
+
+export const useSuspendExecution = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => suspendExecution(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+    },
+  });
+};
+
+export const useResumeExecution = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => resumeExecution(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+    },
+  });
+};
+
+export const useCancelExecution = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => cancelExecution(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['executions'] });
+    },
+  });
+};
+

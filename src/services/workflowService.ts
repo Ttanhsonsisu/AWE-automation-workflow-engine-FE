@@ -61,6 +61,16 @@ export async function getStepExecutionDetail(instanceId: string, stepId: string)
   return response.data;
 }
 
+export async function retryExecution(instanceId: string) {
+  const response = await apiClient.post(`/executions/${instanceId}/retry`);
+  return response.data;
+}
+
+export async function cancelExecution(instanceId: string) {
+  const response = await apiClient.post(`/executions/${instanceId}/cancel`);
+  return response.data;
+}
+
 export async function getWorkflowContext(instanceId: string) {
   const response = await apiClient.get(`/workflows/${instanceId}/context`);
   return response.data;

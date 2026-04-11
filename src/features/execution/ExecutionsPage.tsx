@@ -15,13 +15,21 @@ import {
   AlertTriangle,
   RotateCcw,
   Ban,
-  ChevronDown
+  ChevronDown,
+  Pause,
+  Play,
+  RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
 
 import { 
   useExecutions, 
   useWorkflowDefinitionsDropdown, 
-  useWorkflowInstanceStatusDropdown 
+  useWorkflowInstanceStatusDropdown,
+  useRetryExecution,
+  useSuspendExecution,
+  useResumeExecution,
+  useCancelExecution,
 } from '@/api/executions';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +49,28 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { WorkflowExecution, ExecutionFilters } from '@/types/execution';
 
@@ -138,6 +168,85 @@ const getStatusConfig = (status: string | number) => {
   };
 };
 
+// ─── Status-based action eligibility helpers ─────────────────────
+// These mirror the backend business rules exactly.
+
+/** Suspend: only when status is Running */
+const canSuspend = (status: string | number) => {
+  const label = getStatusConfig(status).label;
+  return label === 'Running';
+};
+
+/** Resume: only when status is Suspended */
+const canResume = (status: string | number) => {
+  const label = getStatusConfig(status).label;
+  return label === 'Suspended';
+};
+
+/** Retry: only when status is Failed or Compensating */
+const canRetry = (status: string | number) => {
+  const label = getStatusConfig(status).label;
+  return label === 'Failed' || label === 'Compensating';
+};
+
+/** Cancel: any status except terminal states (Completed, Failed, Cancelled) */
+const canCancel = (status: string | number) => {
+  const label = getStatusConfig(status).label;
+  const terminalStates = ['Completed', 'Failed', 'Cancelled'];
+  return !terminalStates.includes(label);
+};
+
+// ─── Confirmation dialog types ───────────────────────────────────
+type ActionType = 'retry' | 'suspend' | 'resume' | 'cancel';
+
+interface ConfirmDialogState {
+  open: boolean;
+  action: ActionType | null;
+  execution: WorkflowExecution | null;
+}
+
+const actionMeta: Record<ActionType, {
+  title: string;
+  description: (name: string) => string;
+  confirmLabel: string;
+  confirmVariant: 'default' | 'destructive';
+  icon: React.ReactNode;
+  iconBg: string;
+}> = {
+  retry: {
+    title: 'Retry Execution',
+    description: (name) => `Are you sure you want to retry the failed execution of "${name}"? This will re-run the failed nodes.`,
+    confirmLabel: 'Retry',
+    confirmVariant: 'default',
+    icon: <RefreshCw className="size-6" />,
+    iconBg: 'bg-orange-500/10 text-orange-500',
+  },
+  suspend: {
+    title: 'Suspend Execution',
+    description: (name) => `Are you sure you want to suspend the running execution of "${name}"? The workflow will pause and can be resumed later.`,
+    confirmLabel: 'Suspend',
+    confirmVariant: 'default',
+    icon: <Pause className="size-6" />,
+    iconBg: 'bg-amber-500/10 text-amber-500',
+  },
+  resume: {
+    title: 'Resume Execution',
+    description: (name) => `Are you sure you want to resume the suspended execution of "${name}"? The workflow will continue from where it paused.`,
+    confirmLabel: 'Resume',
+    confirmVariant: 'default',
+    icon: <Play className="size-6" />,
+    iconBg: 'bg-emerald-500/10 text-emerald-500',
+  },
+  cancel: {
+    title: 'Cancel Execution',
+    description: (name) => `Are you sure you want to cancel the execution of "${name}"? All pending and suspended tasks will be skipped. This action cannot be undone.`,
+    confirmLabel: 'Cancel Execution',
+    confirmVariant: 'destructive',
+    icon: <Ban className="size-6" />,
+    iconBg: 'bg-destructive/10 text-destructive',
+  },
+};
+
 const ExecutionsPage: React.FC = () => {
   const [filters, setFilters] = useState<ExecutionFilters>({
     page: 1,
@@ -147,13 +256,76 @@ const ExecutionsPage: React.FC = () => {
   });
 
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+    open: false,
+    action: null,
+    execution: null,
+  });
+  const [actionFeedback, setActionFeedback] = useState<{
+    id: string;
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const { data: pageData, isLoading, error } = useExecutions(filters);
   const { data: definitions } = useWorkflowDefinitionsDropdown();
   const { data: statuses } = useWorkflowInstanceStatusDropdown();
 
+  const retryMutation = useRetryExecution();
+  const suspendMutation = useSuspendExecution();
+  const resumeMutation = useResumeExecution();
+  const cancelMutation = useCancelExecution();
+
+  const isAnyMutationPending = retryMutation.isPending || suspendMutation.isPending || resumeMutation.isPending || cancelMutation.isPending;
+
   const handlePageChange = (newPage: number) => {
     setFilters(prev => ({ ...prev, page: newPage }));
+  };
+
+  const openConfirm = (action: ActionType, execution: WorkflowExecution) => {
+    setConfirmDialog({ open: true, action, execution });
+  };
+
+  const closeConfirm = () => {
+    setConfirmDialog({ open: false, action: null, execution: null });
+  };
+
+  const handleConfirmAction = () => {
+    const { action, execution } = confirmDialog;
+    if (!action || !execution) return;
+
+    const mutationMap: Record<ActionType, typeof retryMutation> = {
+      retry: retryMutation,
+      suspend: suspendMutation,
+      resume: resumeMutation,
+      cancel: cancelMutation,
+    };
+
+    const mutation = mutationMap[action];
+    mutation.mutate(execution.id, {
+      onSuccess: () => {
+        setActionFeedback({
+          id: execution.id,
+          type: 'success',
+          message: `${action.charAt(0).toUpperCase() + action.slice(1)} successful`,
+        });
+        setTimeout(() => setActionFeedback(null), 3000);
+        closeConfirm();
+      },
+      onError: (err: any) => {
+        const serverMessage = err?.response?.data?.message 
+          || err?.response?.data?.error?.message 
+          || err?.message 
+          || 'An unexpected error occurred';
+        setActionFeedback({
+          id: execution.id,
+          type: 'error',
+          message: serverMessage,
+        });
+        setTimeout(() => setActionFeedback(null), 5000);
+        closeConfirm();
+      },
+    });
   };
 
   const columns: ColumnDef<WorkflowExecution>[] = [
@@ -185,11 +357,22 @@ const ExecutionsPage: React.FC = () => {
       header: 'Status',
       cell: ({ row }) => {
         const config = getStatusConfig(row.original.status);
+        const feedback = actionFeedback?.id === row.original.id ? actionFeedback : null;
         return (
-          <Badge variant="outline" className={cn("gap-1.5 px-2 py-0.5 rounded-full font-medium text-[11px]", config.className)}>
-            {config.icon}
-            {config.label}
-          </Badge>
+          <div className="flex flex-col gap-1">
+            <Badge variant="outline" className={cn("gap-1.5 px-2 py-0.5 rounded-full font-medium text-[11px]", config.className)}>
+              {config.icon}
+              {config.label}
+            </Badge>
+            {feedback && (
+              <span className={cn(
+                "text-[10px] font-medium animate-fadeInUp",
+                feedback.type === 'success' ? 'text-emerald-500' : 'text-destructive'
+              )}>
+                {feedback.message}
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -225,18 +408,161 @@ const ExecutionsPage: React.FC = () => {
     {
       id: 'actions',
       header: '',
-      cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors hover:bg-primary/5"
-          onClick={() => {
-             window.open(`/workflows/${row.original.definitionId}/edit?instanceId=${row.original.id}`, '_blank');
-          }}
-        >
-          <ExternalLink className="size-3.5" /> Details
-        </Button>
-      ),
+      cell: ({ row }) => {
+        const execution = row.original;
+        const status = execution.status;
+        const showSuspend = canSuspend(status);
+        const showResume = canResume(status);
+        const showRetry = canRetry(status);
+        const showCancel = canCancel(status);
+        const hasActions = showSuspend || showResume || showRetry || showCancel;
+
+        return (
+          <div className="flex items-center gap-1.5">
+            {/* Details button - always visible */}
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary transition-colors hover:bg-primary/5"
+                    onClick={() => {
+                      window.open(`/workflows/${execution.definitionId}/edit?instanceId=${execution.id}`, '_blank');
+                    }}
+                  >
+                    <ExternalLink className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View Details</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Quick action buttons for common states */}
+            {showResume && (
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10 border-emerald-500/20 transition-all"
+                      disabled={isAnyMutationPending}
+                      onClick={() => openConfirm('resume', execution)}
+                    >
+                      <Play className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Resume Execution</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {showSuspend && (
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-amber-500 hover:text-amber-600 hover:bg-amber-500/10 border-amber-500/20 transition-all"
+                      disabled={isAnyMutationPending}
+                      onClick={() => openConfirm('suspend', execution)}
+                    >
+                      <Pause className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Suspend Execution</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {showRetry && (
+              <TooltipProvider delayDuration={100}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 border-orange-500/20 transition-all"
+                      disabled={isAnyMutationPending}
+                      onClick={() => openConfirm('retry', execution)}
+                    >
+                      <RefreshCw className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Retry Execution</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* More actions dropdown for cancel & overflow */}
+            {hasActions && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground transition-colors"
+                    disabled={isAnyMutationPending}
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                    Execution Actions
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+
+                  {showSuspend && (
+                    <DropdownMenuItem
+                      className="gap-2 cursor-pointer text-amber-600 focus:text-amber-700 focus:bg-amber-500/10"
+                      onClick={() => openConfirm('suspend', execution)}
+                    >
+                      <Pause className="size-3.5" />
+                      Suspend
+                    </DropdownMenuItem>
+                  )}
+
+                  {showResume && (
+                    <DropdownMenuItem
+                      className="gap-2 cursor-pointer text-emerald-600 focus:text-emerald-700 focus:bg-emerald-500/10"
+                      onClick={() => openConfirm('resume', execution)}
+                    >
+                      <Play className="size-3.5" />
+                      Resume
+                    </DropdownMenuItem>
+                  )}
+
+                  {showRetry && (
+                    <DropdownMenuItem
+                      className="gap-2 cursor-pointer text-orange-600 focus:text-orange-700 focus:bg-orange-500/10"
+                      onClick={() => openConfirm('retry', execution)}
+                    >
+                      <RefreshCw className="size-3.5" />
+                      Retry
+                    </DropdownMenuItem>
+                  )}
+
+                  {showCancel && (
+                    <>
+                      {(showSuspend || showResume || showRetry) && <DropdownMenuSeparator />}
+                      <DropdownMenuItem
+                        className="gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                        onClick={() => openConfirm('cancel', execution)}
+                      >
+                        <Ban className="size-3.5" />
+                        Cancel Execution
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -484,6 +810,85 @@ const ExecutionsPage: React.FC = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Confirmation Dialog ────────────────────────────────── */}
+      <Dialog open={confirmDialog.open} onOpenChange={(open) => { if (!open) closeConfirm(); }}>
+        <DialogContent className="sm:max-w-[440px]">
+          {confirmDialog.action && (
+            <>
+              <DialogHeader className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "size-12 rounded-xl flex items-center justify-center shrink-0",
+                    actionMeta[confirmDialog.action].iconBg
+                  )}>
+                    {actionMeta[confirmDialog.action].icon}
+                  </div>
+                  <div>
+                    <DialogTitle className="text-lg">
+                      {actionMeta[confirmDialog.action].title}
+                    </DialogTitle>
+                    <p className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate max-w-[280px]" title={confirmDialog.execution?.id}>
+                      ID: {confirmDialog.execution?.id}
+                    </p>
+                  </div>
+                </div>
+                <DialogDescription className="text-sm leading-relaxed">
+                  {actionMeta[confirmDialog.action].description(
+                    confirmDialog.execution?.definitionName || 'Unknown'
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Show current status info */}
+              <div className="flex items-center gap-2 py-3 px-3 bg-muted/30 rounded-lg border border-border/40">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Current Status:</span>
+                {confirmDialog.execution && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "gap-1.5 px-2 py-0.5 rounded-full font-medium text-[11px]",
+                      getStatusConfig(confirmDialog.execution.status).className
+                    )}
+                  >
+                    {getStatusConfig(confirmDialog.execution.status).icon}
+                    {getStatusConfig(confirmDialog.execution.status).label}
+                  </Badge>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button
+                  variant="outline"
+                  onClick={closeConfirm}
+                  disabled={isAnyMutationPending}
+                  className="shadow-sm"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant={actionMeta[confirmDialog.action].confirmVariant}
+                  onClick={handleConfirmAction}
+                  disabled={isAnyMutationPending}
+                  className={cn(
+                    "gap-2 shadow-sm transition-all",
+                    isAnyMutationPending && "opacity-70"
+                  )}
+                >
+                  {isAnyMutationPending ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    actionMeta[confirmDialog.action].confirmLabel
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

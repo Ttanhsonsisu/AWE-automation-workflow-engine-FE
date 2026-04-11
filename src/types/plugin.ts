@@ -109,3 +109,89 @@ export interface PackageVersionsResponse {
   data: string[];
 }
 
+// ======================================================================
+// Plugin Package Management Types
+// ======================================================================
+
+/** A single plugin package in the list/grid */
+export interface PluginPackageItem {
+  id: string;
+  uniqueName: string;
+  displayName: string;
+  description: string;
+  category: string;
+  icon: string;
+  executionMode: PluginExecutionMode | string;
+  latestVersion: string | null;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Paged response for plugin packages */
+export interface PluginPackagePagedResponse {
+  items: PluginPackageItem[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
+/** Version entry for a specific plugin package */
+export interface PluginPackageVersion {
+  id: string;
+  packageId: string;
+  version: string;
+  bucket: string;
+  releaseNotes: string;
+  filePath: string | null;
+  sha256: string | null;
+  createdAt: string;
+  isActive: boolean;
+}
+
+/** DTO for creating a new plugin package */
+export interface CreatePluginPackageDto {
+  uniqueName: string;
+  displayName: string;
+  description: string;
+}
+
+/** DTO for uploading a new version to a plugin package */
+export interface UploadPluginVersionDto {
+  packageId: string;
+  version: string;
+  bucket: string;
+  releaseNotes: string;
+  file: File;
+}
+
+/** Filter params for listing plugin packages */
+export interface PluginPackageFilters {
+  page: number;
+  size: number;
+  search?: string;
+  executionMode?: string;
+  category?: string;
+}
+
+/** Plugin package detail (full info including inputs/outputs) */
+export interface PluginPackageDetail {
+  id: string;
+  uniqueName: string;
+  displayName: string;
+  description: string;
+  category: string;
+  icon: string;
+  executionMode: PluginExecutionMode | string;
+  latestVersion: string | null;
+  isEnabled: boolean;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  versions: PluginPackageVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+

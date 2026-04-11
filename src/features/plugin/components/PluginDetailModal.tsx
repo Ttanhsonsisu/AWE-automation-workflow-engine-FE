@@ -45,9 +45,15 @@ import {
   usePluginPackageDetail,
   usePluginPackageVersions,
   useToggleVersionActive,
+  usePluginVersionDetail,
 } from '@/api/plugins';
 import type { PluginPackageItem, JsonSchemaProperty } from '@/types/plugin';
-import { getExecutionModeConfig } from '../pluginUtils';
+import {
+  getExecutionModeConfig,
+  getPluginIconComponent,
+  getCategoryConfig,
+  resolveExecutionMode,
+} from '../pluginUtils';
 
 interface PluginDetailModalProps {
   open: boolean;
@@ -133,6 +139,176 @@ const SchemaPropertyList: React.FC<{
   );
 };
 
+/** Component to render the Overview content (Schemas + Metadata) from versionDetail */
+const PluginOverview: React.FC<{
+  plugin: PluginPackageItem;
+  versionDetail: PluginVersionDetail | null | undefined;
+  isLoading: boolean;
+  isTogglingEnable: boolean;
+  onToggleEnable: (packageId: string, enabled: boolean) => void;
+}> = ({ plugin, versionDetail, isLoading, isTogglingEnable, onToggleEnable }) => {
+  const isBuiltIn = plugin.isBuiltIn;
+
+  return (
+    <div className="space-y-10">
+      {/* Description Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 text-primary">
+          <div className="size-8 rounded-xl bg-primary/10 flex items-center justify-center shadow-sm">
+            <Info className="size-4.5" />
+          </div>
+          <h3 className="font-black text-[10px] uppercase tracking-[0.2em] opacity-70">
+            About this Plugin
+          </h3>
+        </div>
+        <p className="text-sm text-foreground/80 leading-relaxed bg-muted/40 p-6 rounded-3xl border border-border/40 shadow-inner">
+          {plugin.description || 'No description available for this plugin package.'}
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-10">
+          {[1, 2].map(i => (
+            <div key={i} className="space-y-4">
+              <Skeleton className="h-5 w-48 rounded-lg" />
+              <Skeleton className="h-44 w-full rounded-[2rem]" />
+            </div>
+          ))}
+        </div>
+      ) : versionDetail ? (
+        <>
+          {/* Input Parameters Section */}
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-emerald-600">
+                <div className="size-8 rounded-xl bg-emerald-500/10 flex items-center justify-center shadow-sm">
+                  <ArrowRight className="size-4.5" />
+                </div>
+                <h3 className="font-black text-[10px] uppercase tracking-[0.2em] opacity-70">
+                  Input Contract
+                </h3>
+              </div>
+              {versionDetail.version && (
+                <Badge variant="outline" className="text-[10px] font-mono font-bold bg-muted/30 border-none">v{versionDetail.version}</Badge>
+              )}
+            </div>
+            <div className="bg-background rounded-[2rem] border border-border/40 overflow-hidden shadow-sm">
+              <SchemaPropertyList
+                properties={versionDetail.inputSchema?.properties}
+                required={versionDetail.inputSchema?.required}
+              />
+            </div>
+          </div>
+
+          {/* Output Parameters Section */}
+          <div className="space-y-5">
+            <div className="flex items-center gap-3 text-violet-600">
+              <div className="size-8 rounded-xl bg-violet-500/10 flex items-center justify-center shadow-sm">
+                <CheckCircle2 className="size-4.5" />
+              </div>
+              <h3 className="font-black text-[10px] uppercase tracking-[0.2em] opacity-70">
+                Output Contract
+              </h3>
+            </div>
+            <div className="bg-background rounded-[2rem] border border-border/40 overflow-hidden shadow-sm">
+              <SchemaPropertyList
+                properties={versionDetail.outputSchema?.properties}
+                required={versionDetail.outputSchema?.required}
+              />
+            </div>
+          </div>
+
+          {/* Technical Deep-Dive (Metadata) */}
+          {versionDetail.executionMetadata && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3 text-amber-600">
+                <div className="size-8 rounded-xl bg-amber-500/10 flex items-center justify-center shadow-sm">
+                  <FileCode2 className="size-4.5" />
+                </div>
+                <h3 className="font-black text-[10px] uppercase tracking-[0.2em] opacity-70">
+                  Binary Properties
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-5 bg-muted/30 rounded-3xl border border-border/40 flex flex-col gap-1.5 transition-colors hover:bg-muted/40">
+                  <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest">Runtime Logic</span>
+                  <span className="text-xs font-mono font-bold truncate text-foreground/90">{versionDetail.executionMetadata.PluginType}</span>
+                </div>
+                <div className="p-5 bg-muted/30 rounded-3xl border border-border/40 flex flex-col gap-1.5 transition-colors hover:bg-muted/40">
+                  <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest">Size on Disk</span>
+                  <span className="text-xs font-mono font-bold text-foreground/90">{(versionDetail.executionMetadata.Size / 1024).toFixed(1)} KB</span>
+                </div>
+                <div className="p-5 bg-muted/30 rounded-3xl border border-border/40 flex flex-col gap-2 md:col-span-2 transition-colors hover:bg-muted/40">
+                  <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest">Integrity Hash (SHA-256)</span>
+                  <span className="text-[10px] font-mono break-all leading-relaxed bg-background/40 p-3 rounded-xl border border-border/20 text-foreground/70">
+                    {versionDetail.executionMetadata.Sha256}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="py-16 flex flex-col items-center justify-center gap-4 bg-muted/10 rounded-[3rem] border border-dashed border-border/60">
+          <div className="size-14 rounded-full bg-background flex items-center justify-center shadow-sm">
+            <Info className="size-7 text-muted-foreground/20" />
+          </div>
+          <p className="text-sm font-bold text-muted-foreground/40 uppercase tracking-widest">No Schema Data</p>
+        </div>
+      )}
+
+      {/* Action Controls Section */}
+      {!isBuiltIn && (
+        <div className="pt-8 border-t border-border/40">
+          <Button
+            variant={plugin.isEnabled !== false ? 'outline' : 'default'}
+            className={cn(
+              'group relative h-14 w-full transition-all duration-500 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-lg overflow-hidden',
+              plugin.isEnabled !== false
+                ? 'bg-background border-destructive/20 text-destructive hover:bg-destructive/10 hover:border-destructive/40'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/30'
+            )}
+            onClick={() => onToggleEnable(plugin.id!, plugin.isEnabled === false)}
+            disabled={isTogglingEnable}
+          >
+            <div className="flex items-center gap-3 relative z-10">
+              {isTogglingEnable ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : plugin.isEnabled !== false ? (
+                <ShieldOff className="size-5 group-hover:rotate-12 transition-transform" />
+              ) : (
+                <Shield className="size-5 group-hover:scale-110 transition-transform" />
+              )}
+              {plugin.isEnabled !== false
+                ? 'Deactivate Global Package'
+                : 'Activate Global Package'}
+            </div>
+          </Button>
+          <p className="text-[10px] text-center text-muted-foreground/40 mt-3 font-medium">
+            Activating or deactivating will affect all workflows using this plugin.
+          </p>
+        </div>
+      )}
+
+      {isBuiltIn && (
+        <div className="pt-6 border-t border-border/40">
+          <div className="flex items-start gap-4 p-5 bg-emerald-500/[0.03] rounded-3xl border border-emerald-500/10">
+            <div className="size-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+              <Shield className="size-5 text-emerald-600" />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-black text-emerald-700 uppercase tracking-tight">System Core Integrity</p>
+              <p className="text-[11px] text-emerald-600/70 py-0.5 leading-relaxed font-semibold">
+                Natively compiled into the AWE Engine for high-performance and absolute stability.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
   open,
   onOpenChange,
@@ -150,22 +326,54 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
     usePluginPackageVersions(plugin?.id ?? null);
   const toggleVersionMutation = useToggleVersionActive();
 
+  // Reset selected version when plugin changes
+  React.useEffect(() => {
+    if (plugin) {
+      setSelectedVersion(plugin.latestVersion);
+    }
+  }, [plugin?.id, plugin?.uniqueName, plugin?.latestVersion]);
+
+  const isBuiltIn = plugin?.isBuiltIn ?? false;
+  const viewingVersion = selectedVersion || plugin?.latestVersion || null;
+
+  // Prepare params for specific version/builtin detail
+  const detailParams = React.useMemo(() => {
+    if (!plugin) return null;
+    const mode = resolveExecutionMode(plugin.executionMode);
+    
+    if (isBuiltIn) {
+      return { mode: 'BuiltIn', name: plugin.uniqueName };
+    }
+    
+    if (plugin.id && viewingVersion) {
+      return { 
+        mode, 
+        packageId: plugin.id, 
+        version: viewingVersion 
+      };
+    }
+    
+    return null;
+  }, [plugin, isBuiltIn, viewingVersion]);
+
+  const { data: versionDetail, isLoading: isVersionDetailLoading } =
+    usePluginVersionDetail(detailParams);
+
   if (!plugin) return null;
 
   const modeConfig = getExecutionModeConfig(plugin.executionMode);
-  const isBuiltIn = plugin.executionMode === 'BuiltIn';
+  const IconComponent = getPluginIconComponent(plugin.icon);
+  const categoryConfig = getCategoryConfig(plugin.category);
   const canUploadVersion = !isBuiltIn;
-
-  // Version currently being viewed in the Overview tab
-  const viewingVersion = selectedVersion || plugin.latestVersion || null;
 
   // Handle View Docs redirect
   const handleViewDocs = () => {
-    window.open(`/plugins/${plugin.id}/docs`, '_blank');
+    window.open(`/plugins/${plugin.uniqueName}/docs`, '_blank');
   };
 
   // Handle Toggle Version On/Off
   const handleToggleVersion = (versionId: string, active: boolean) => {
+    if (!plugin.id) return;
     toggleVersionMutation.mutate({ packageId: plugin.id, versionId, active });
   };
 
@@ -174,51 +382,54 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
       <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
-          <div className="flex items-start gap-4">
-            {/* Icon */}
-            <div
-              className={cn(
-                'size-14 rounded-2xl flex items-center justify-center text-2xl font-bold shrink-0 border shadow-sm',
-                'bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20 text-primary'
-              )}
-            >
-              {plugin.icon ? (
-                <span>{plugin.icon}</span>
-              ) : (
-                <span>
-                  {plugin.displayName?.charAt(0)?.toUpperCase() || '?'}
-                </span>
-              )}
+          <div className="flex items-start gap-5">
+            {/* Logo */}
+            <div className={cn(
+              "size-20 rounded-3xl flex items-center justify-center shrink-0 shadow-lg border border-border/40",
+              "bg-gradient-to-br from-background to-muted/30"
+            )}>
+              <IconComponent className="size-10 text-primary/80" />
             </div>
 
             {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <DialogTitle className="text-xl font-bold truncate">
+                <DialogTitle className="text-xl font-black tracking-tight truncate">
                   {plugin.displayName}
                 </DialogTitle>
                 <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-2 h-5 font-bold uppercase border-none",
+                    categoryConfig.className
+                  )}
+                >
+                  {plugin.category}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground font-medium mt-0.5">
+                <Badge
                   variant="outline"
                   className={cn(
-                    'text-[10px] px-1.5 rounded-md font-semibold shrink-0',
+                    'text-[9px] px-1.5 h-4.5 rounded-md font-bold uppercase tracking-wider shrink-0 border-none',
                     modeConfig.className
                   )}
                 >
                   {modeConfig.label}
                 </Badge>
+                <span className="text-muted-foreground/30">•</span>
+                <span className="font-mono text-xs opacity-70 truncate">{plugin.uniqueName}</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5 font-mono">
-                {plugin.uniqueName}
-              </p>
+              
               {plugin.latestVersion && (
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  <Tag className="size-3 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground">
-                    Latest:{' '}
+                <div className="flex items-center gap-1.5 mt-2">
+                  <Tag className="size-3 text-muted-foreground/40" />
+                  <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-tight">
+                    Latest Version:
                   </span>
                   <Badge
                     variant="outline"
-                    className="text-[10px] px-1.5 py-0 rounded font-mono bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                    className="text-[10px] px-1.5 py-0 h-4.5 rounded font-mono bg-emerald-500/10 text-emerald-600 border-none font-bold"
                   >
                     v{plugin.latestVersion}
                   </Badge>
@@ -246,347 +457,129 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
           </div>
         </DialogHeader>
 
-        {/* Tabs — BuiltIn: only Overview; DLL/gRPC: Overview + Version History */}
-        {isBuiltIn ? (
-          /* BuiltIn: Overview only, no tabs needed */
-          <ScrollArea className="h-[420px] flex-1">
-            <div className="px-6 py-4 space-y-5">
-              {isDetailLoading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-20 w-full" />
-                </div>
-              ) : (
-                <>
-                  {/* Description */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                      <FileText className="size-3" />
-                      Description
-                    </h4>
-                    <p className="text-sm text-foreground/80 leading-relaxed bg-muted/20 rounded-lg p-3 border border-border/30">
-                      {detail?.description ||
-                        plugin.description ||
-                        'No description available.'}
-                    </p>
-                  </div>
+        {/* Body Area */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          {isBuiltIn ? (
+            <ScrollArea className="flex-1">
+              <div className="px-6 py-6 space-y-8">
+                <PluginOverview 
+                  plugin={plugin} 
+                  versionDetail={versionDetail} 
+                  isLoading={isVersionDetailLoading} 
+                  isTogglingEnable={isTogglingEnable}
+                  onToggleEnable={onToggleEnable}
+                />
+              </div>
+            </ScrollArea>
+          ) : (
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+              <div className="px-6 pt-3 shrink-0">
+                <TabsList className="w-full h-11 bg-muted/30 p-1.5 rounded-xl border border-border/40">
+                  <TabsTrigger value="overview" className="flex-1 gap-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg data-[state=active]:bg-background">
+                    <Info className="size-3.5" /> Overview
+                  </TabsTrigger>
+                  <TabsTrigger value="versions" className="flex-1 gap-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg data-[state=active]:bg-background">
+                    <History className="size-3.5" /> Version History
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-                  {/* Inputs */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                      <ArrowRight className="size-3" />
-                      Input Parameters
-                    </h4>
-                    <SchemaPropertyList
-                      properties={detail?.inputSchema?.properties}
-                      required={detail?.inputSchema?.required}
+              <TabsContent value="overview" className="flex-1 min-h-0 m-0">
+                <ScrollArea className="h-[430px]">
+                  <div className="px-6 py-6 space-y-8">
+                    {/* Version Switcher */}
+                    {versions && versions.length > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/10 space-y-2.5">
+                        <label className="text-[9px] font-black text-primary uppercase tracking-widest flex items-center gap-1.5 ml-1">
+                          <Tag className="size-3" /> Technical View
+                        </label>
+                        <Select value={viewingVersion || ''} onValueChange={(v) => setSelectedVersion(v)}>
+                          <SelectTrigger className="h-10 bg-background border-border/40 font-mono font-bold text-sm shadow-sm rounded-xl">
+                            <SelectValue placeholder="Select version" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl border-border/40">
+                             {versions.map((ver, idx) => (
+                              <SelectItem key={ver.id} value={ver.version} className="rounded-lg py-2.5">
+                                <div className="flex items-center gap-3">
+                                  <span className="font-mono font-bold text-sm">v{ver.version}</span>
+                                  {idx === 0 && <Badge variant="outline" className="text-[8px] h-3.5 bg-primary/10 text-primary border-none">LATEST</Badge>}
+                                  {ver.isActive && <Badge variant="outline" className="text-[8px] h-3.5 bg-emerald-500/10 text-emerald-600 border-none">ACTIVE</Badge>}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    <PluginOverview 
+                      plugin={plugin} 
+                      versionDetail={versionDetail} 
+                      isLoading={isVersionDetailLoading} 
+                      isTogglingEnable={isTogglingEnable}
+                      onToggleEnable={onToggleEnable}
                     />
                   </div>
+                </ScrollArea>
+              </TabsContent>
 
-                  {/* Outputs */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                      <ArrowRight className="size-3 rotate-180" />
-                      Output Parameters
-                    </h4>
-                    <SchemaPropertyList
-                      properties={detail?.outputSchema?.properties}
-                      required={detail?.outputSchema?.required}
-                    />
-                  </div>
+              <TabsContent value="versions" className="flex-1 min-h-0 m-0">
+                <ScrollArea className="h-[480px]">
+                  <div className="px-6 py-6 space-y-5">
+                    {canUploadVersion && (
+                      <Button
+                        variant="outline"
+                        className="w-full h-11 gap-2.5 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all rounded-2xl font-black text-xs uppercase tracking-wider"
+                        onClick={() => plugin.id && onUploadVersion(plugin.id)}
+                      >
+                        <Upload className="size-4" /> Upload New Bundle
+                      </Button>
+                    )}
 
-                  {/* Info note for BuiltIn */}
-                  <div className="pt-2 border-t border-border/30">
-                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30">
-                      <Info className="size-4 text-muted-foreground shrink-0" />
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        This is a <span className="font-semibold text-foreground">Built-in</span> plugin managed by the system. It cannot be disabled or have custom versions uploaded.
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </ScrollArea>
-        ) : (
-          /* DLL / gRPC: Full tabs */
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="flex-1 flex flex-col min-h-0"
-          >
-            <div className="px-6 pt-3 shrink-0">
-              <TabsList className="w-full">
-                <TabsTrigger value="overview" className="flex-1 gap-1.5 text-xs">
-                  <Info className="size-3.5" />
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="versions" className="flex-1 gap-1.5 text-xs">
-                  <History className="size-3.5" />
-                  Version History
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            {/* ── Overview Tab ── */}
-            <TabsContent value="overview" className="flex-1 min-h-0 m-0">
-              <ScrollArea className="h-[400px]">
-                <div className="px-6 py-4 space-y-5">
-                  {isDetailLoading ? (
-                    <div className="space-y-3">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-20 w-full" />
-                    </div>
-                  ) : (
-                    <>
-                      {/* Version Switcher */}
-                      {versions && versions.length > 0 && (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                            <Tag className="size-3" />
-                            Viewing Version
-                          </label>
-                          <Select
-                            value={viewingVersion || ''}
-                            onValueChange={(v) => setSelectedVersion(v)}
-                          >
-                            <SelectTrigger className="h-9 bg-background/60 border-border/50 shadow-sm w-full max-w-[200px]">
-                              <SelectValue placeholder="Select version" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {versions.map((ver, idx) => (
-                                <SelectItem key={ver.id} value={ver.version}>
+                    {isVersionsLoading ? (
+                      <div className="space-y-4">
+                        {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 w-full rounded-3xl" />)}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {versions?.map((ver, idx) => (
+                          <div key={ver.id} className={cn(
+                            "group p-5 rounded-3xl border transition-all duration-300 relative",
+                            ver.isActive ? "bg-emerald-50/[0.03] border-emerald-500/20 shadow-sm" : "bg-card border-border/40"
+                          )}>
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-4 min-w-0">
+                                <div className={cn("size-10 rounded-xl flex items-center justify-center border", ver.isActive ? "bg-emerald-500/10 border-emerald-500/20" : "bg-muted/40 border-border/40")}>
+                                  <FileCode2 className={cn("size-5", ver.isActive ? "text-emerald-600" : "text-muted-foreground/60")} />
+                                </div>
+                                <div className="space-y-0.5 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono font-medium">v{ver.version}</span>
-                                    {idx === 0 && (
-                                      <span className="text-[9px] text-primary font-bold uppercase">Latest</span>
-                                    )}
-                                    {ver.isActive && (
-                                      <span className="text-[9px] text-emerald-600 font-bold uppercase">Active</span>
-                                    )}
+                                    <span className="text-base font-black font-mono">v{ver.version}</span>
+                                    {idx === 0 && <Badge variant="outline" className="text-[9px] h-4.5 bg-primary/10 text-primary border-none">LATEST</Badge>}
                                   </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Description */}
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                          <FileText className="size-3" />
-                          Description
-                        </h4>
-                        <p className="text-sm text-foreground/80 leading-relaxed bg-muted/20 rounded-lg p-3 border border-border/30">
-                          {detail?.description ||
-                            plugin.description ||
-                            'No description available.'}
-                        </p>
-                      </div>
-
-                      {/* Inputs */}
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                          <ArrowRight className="size-3" />
-                          Input Parameters
-                        </h4>
-                        <SchemaPropertyList
-                          properties={detail?.inputSchema?.properties}
-                          required={detail?.inputSchema?.required}
-                        />
-                      </div>
-
-                      {/* Outputs */}
-                      <div className="space-y-2">
-                        <h4 className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
-                          <ArrowRight className="size-3 rotate-180" />
-                          Output Parameters
-                        </h4>
-                        <SchemaPropertyList
-                          properties={detail?.outputSchema?.properties}
-                          required={detail?.outputSchema?.required}
-                        />
-                      </div>
-
-                      {/* Toggle Enable/Disable — only for non-BuiltIn */}
-                      <div className="pt-2 border-t border-border/30">
-                        <Button
-                          variant={plugin.isEnabled ? 'outline' : 'default'}
-                          className={cn(
-                            'gap-2 w-full transition-all',
-                            plugin.isEnabled
-                              ? 'border-destructive/30 text-destructive hover:bg-destructive/10 hover:border-destructive/50'
-                              : 'bg-emerald-600 hover:bg-emerald-700'
-                          )}
-                          onClick={() =>
-                            onToggleEnable(plugin.id, !plugin.isEnabled)
-                          }
-                          disabled={isTogglingEnable}
-                        >
-                          {isTogglingEnable ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : plugin.isEnabled ? (
-                            <ShieldOff className="size-4" />
-                          ) : (
-                            <Shield className="size-4" />
-                          )}
-                          {plugin.isEnabled
-                            ? 'Disable Plugin'
-                            : 'Enable Plugin'}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
-
-            {/* ── Version History Tab ── */}
-            <TabsContent value="versions" className="flex-1 min-h-0 m-0">
-              <ScrollArea className="h-[400px]">
-                <div className="px-6 py-4 space-y-4">
-                  {/* Upload button */}
-                  {canUploadVersion && (
-                    <Button
-                      variant="outline"
-                      className="w-full gap-2 border-dashed border-primary/30 hover:border-primary/60 hover:bg-primary/5 transition-all"
-                      onClick={() => onUploadVersion(plugin.id)}
-                    >
-                      <Upload className="size-4" />
-                      Upload New Version
-                    </Button>
-                  )}
-
-                  {isVersionsLoading ? (
-                    <div className="space-y-3">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-20 w-full rounded-lg" />
-                      ))}
-                    </div>
-                  ) : versions && versions.length > 0 ? (
-                    <div className="space-y-2.5">
-                      {versions.map((ver, idx) => (
-                        <div
-                          key={ver.id}
-                          className={cn(
-                            'p-3.5 rounded-xl border transition-all hover:shadow-sm',
-                            ver.isActive
-                              ? 'border-emerald-500/30 bg-emerald-500/5 shadow-inner'
-                              : idx === 0
-                                ? 'border-primary/30 bg-primary/5'
-                                : 'border-border/40 bg-card/50'
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={cn(
-                                  'size-8 rounded-lg flex items-center justify-center shrink-0',
-                                  ver.isActive
-                                    ? 'bg-emerald-500/10'
-                                    : idx === 0
-                                      ? 'bg-primary/10'
-                                      : 'bg-muted/30'
-                                )}
-                              >
-                                <FileCode2
-                                  className={cn(
-                                    'size-4',
-                                    ver.isActive
-                                      ? 'text-emerald-600'
-                                      : idx === 0
-                                        ? 'text-primary'
-                                        : 'text-muted-foreground'
-                                  )}
+                                  <p className="text-[11px] text-muted-foreground truncate">{ver.releaseNotes || 'No release notes.'}</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-2.5 ml-4">
+                                <Switch
+                                  checked={ver.isActive}
+                                  onCheckedChange={(checked) => handleToggleVersion(ver.id, checked)}
+                                  disabled={toggleVersionMutation.isPending}
                                 />
+                                <span className={cn("text-[9px] font-black uppercase tracking-widest", ver.isActive ? "text-emerald-600" : "text-muted-foreground/40")}>
+                                  {ver.isActive ? "Live" : "Inactive"}
+                                </span>
                               </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono font-bold text-sm text-foreground">
-                                    v{ver.version}
-                                  </span>
-                                  {idx === 0 && (
-                                    <Badge className="text-[9px] px-1.5 py-0 rounded bg-primary/10 text-primary border-primary/20 font-bold">
-                                      LATEST
-                                    </Badge>
-                                  )}
-                                  {ver.isActive && (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[9px] px-1.5 py-0 rounded border-emerald-500/20 bg-emerald-500/10 text-emerald-600"
-                                    >
-                                      <CheckCircle2 className="size-2.5 mr-0.5" />
-                                      Active
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="size-2.5" />
-                                    {format(
-                                      new Date(ver.createdAt),
-                                      'MMM d, yyyy HH:mm'
-                                    )}
-                                  </span>
-                                  {ver.bucket && (
-                                    <span className="font-mono bg-muted/30 px-1.5 rounded">
-                                      {ver.bucket}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* On/Off toggle switch — independent per version */}
-                            <div className="shrink-0 flex items-center gap-2">
-                              <span className={cn(
-                                'text-[10px] font-semibold',
-                                ver.isActive ? 'text-emerald-600' : 'text-muted-foreground/50'
-                              )}>
-                                {ver.isActive ? 'ON' : 'OFF'}
-                              </span>
-                              <Switch
-                                size="sm"
-                                checked={ver.isActive}
-                                disabled={toggleVersionMutation.isPending}
-                                onCheckedChange={(checked) => {
-                                  handleToggleVersion(ver.id, checked);
-                                }}
-                              />
                             </div>
                           </div>
-
-                          {ver.releaseNotes && (
-                            <p className="text-xs text-muted-foreground mt-2 pl-10 leading-relaxed">
-                              {ver.releaseNotes}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 gap-3">
-                      <div className="size-12 rounded-full bg-muted/30 flex items-center justify-center">
-                        <History className="size-6 text-muted-foreground/40" />
+                        ))}
                       </div>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-muted-foreground">
-                          No versions found
-                        </p>
-                        <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                          Upload a version to get started.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        )}
+                    )}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

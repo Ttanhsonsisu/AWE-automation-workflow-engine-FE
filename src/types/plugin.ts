@@ -113,19 +113,27 @@ export interface PackageVersionsResponse {
 // Plugin Package Management Types
 // ======================================================================
 
-/** A single plugin package in the list/grid */
+/** Execution mode numeric enum mapping from C# backend */
+export const ExecutionModeMap: Record<number, PluginExecutionMode> = {
+  0: 'BuiltIn',
+  1: 'DynamicDll',
+  2: 'RemoteGrpc',
+};
+
+/** A single plugin package in the list/grid — maps to GET /api/plugins/packages */
 export interface PluginPackageItem {
-  id: string;
+  /** null for BuiltIn plugins */
+  id: string | null;
   uniqueName: string;
   displayName: string;
   description: string;
   category: string;
   icon: string;
-  executionMode: PluginExecutionMode | string;
+  /** Backend returns a number: 0=BuiltIn, 1=DynamicDll, 2=RemoteGrpc */
+  executionMode: number | string;
   latestVersion: string | null;
-  isEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
+  isBuiltIn: boolean;
+  isEnabled?: boolean;
 }
 
 /** Paged response for plugin packages */
@@ -177,21 +185,47 @@ export interface PluginPackageFilters {
   category?: string;
 }
 
+/** Generic dropdown item from /api/dropdown/* endpoints */
+export interface DropdownItem {
+  value: string;
+  label: string;
+}
+
 /** Plugin package detail (full info including inputs/outputs) */
 export interface PluginPackageDetail {
-  id: string;
+  id: string | null;
   uniqueName: string;
   displayName: string;
   description: string;
   category: string;
   icon: string;
-  executionMode: PluginExecutionMode | string;
+  executionMode: number | string;
   latestVersion: string | null;
-  isEnabled: boolean;
+  isBuiltIn: boolean;
+  isEnabled?: boolean;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
   versions: PluginPackageVersion[];
-  createdAt: string;
-  updatedAt: string;
+}
+
+/** Detail for a specific version/built-in plugin — maps to GET /api/plugins/details */
+export interface PluginVersionDetail {
+  name: string;
+  displayName: string;
+  executionMode: string;
+  version: string | null;
+  executionMetadata: ExecutionMetadata | null;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+}
+
+/** Metadata related to plugin execution (e.g. file size, sha256) */
+export interface ExecutionMetadata {
+  Size: number;
+  Bucket: string;
+  Sha256: string;
+  ObjectKey: string;
+  PluginType: string;
+  OutputSchema?: JsonSchema;
 }
 

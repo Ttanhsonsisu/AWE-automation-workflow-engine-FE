@@ -21,6 +21,8 @@ import {
   useCreatePluginPackage,
   useUploadPluginVersion,
   useTogglePluginPackage,
+  useExecutionModeDropdown,
+  useCategoryDropdown,
 } from '@/api/plugins';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -50,7 +52,11 @@ import {
 import { cn } from '@/lib/utils';
 
 import type { PluginPackageFilters, PluginPackageItem } from '@/types/plugin';
-import { getExecutionModeConfig, getCategoryIcon } from './pluginUtils';
+import {
+  getExecutionModeConfig,
+  getPluginIconComponent,
+  getCategoryConfig,
+} from './pluginUtils';
 import CreatePackageModal from './components/CreatePackageModal';
 import UploadVersionModal from './components/UploadVersionModal';
 import PluginDetailModal from './components/PluginDetailModal';
@@ -71,122 +77,114 @@ const PluginCard: React.FC<PluginCardProps> = ({
   onToggleEnable,
 }) => {
   const modeConfig = getExecutionModeConfig(plugin.executionMode);
-  const categoryIcon = plugin.icon || getCategoryIcon(plugin.category);
-  const isBuiltIn = plugin.executionMode === 'BuiltIn';
+  const categoryConfig = getCategoryConfig(plugin.category);
+  const IconComponent = getPluginIconComponent(plugin.icon);
+  const isBuiltIn = plugin.isBuiltIn;
 
   return (
     <Card
       className={cn(
         'group relative cursor-pointer border-border/50 bg-card/80 backdrop-blur-sm shadow-sm',
-        'transition-all duration-300 hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5',
-        'overflow-hidden',
-        !plugin.isEnabled && 'opacity-60 grayscale-[30%]'
+        'transition-all duration-300 hover:shadow-lg hover:border-primary/40 hover:-translate-y-1',
+        'overflow-hidden h-full flex flex-col',
+        plugin.isBuiltIn && !plugin.id && 'ring-1 ring-emerald-500/10'
       )}
       onClick={() => onCardClick(plugin)}
     >
-      {/* Gradient glow on hover */}
-      <div className="absolute inset-0 bg-gradient-to-b from-primary/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-
-      <CardContent className="p-4 relative">
-        {/* Top row: Icon + Mode badge + Action */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          {/* Icon */}
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      
+      <CardContent className="p-5 flex flex-col h-full gap-4 relative">
+        {/* Main Content Area: Left(Icon), Middle(Info), Right(Category/Action) */}
+        <div className="flex items-start gap-4">
+          {/* Left: Icon */}
           <div className={cn(
-            'size-12 rounded-xl flex items-center justify-center text-xl shrink-0',
-            'bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/15',
-            'shadow-sm group-hover:shadow-md transition-shadow duration-300'
+            'size-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-border/40',
+            'bg-gradient-to-br from-background to-muted/30 group-hover:scale-105 transition-transform duration-300'
           )}>
-            {categoryIcon}
+            <IconComponent className="size-7 text-primary/80 group-hover:text-primary transition-colors" />
           </div>
 
-          {/* Right side: Badge + action */}
-          <div className="flex items-center gap-1.5">
-            <Badge
-              variant="outline"
-              className={cn(
-                'text-[9px] px-1.5 py-0 rounded-md font-bold uppercase tracking-wider shrink-0',
-                modeConfig.className
-              )}
-            >
-              {modeConfig.label}
-            </Badge>
+          {/* Middle: Name, Badge, Description */}
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors duration-200">
+                {plugin.displayName}
+              </h3>
+              <Badge
+                variant="outline"
+                className={cn(
+                  'text-[9px] px-1.5 h-4 rounded-md font-bold uppercase tracking-wider shrink-0 border-none',
+                  modeConfig.className
+                )}
+              >
+                {modeConfig.label}
+              </Badge>
+            </div>
+            
+            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed h-[2.75em]">
+              {plugin.description || 'No description available for this plugin package.'}
+            </p>
+          </div>
 
-            {/* Actions dropdown */}
+          {/* Right: Category & Action */}
+          <div className="flex flex-col items-end gap-2 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="size-7 p-0 text-muted-foreground/40 hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="size-8 p-0 -mt-1 -mr-1 text-muted-foreground/40 hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-all rounded-full"
                 >
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => onCardClick(plugin)}>
-                  <Eye className="size-3.5" />
-                  View Details
+              <DropdownMenuContent align="end" className="w-48 p-1.5" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem className="gap-2.5 cursor-pointer py-2 px-3 rounded-lg" onClick={() => onCardClick(plugin)}>
+                  <Eye className="size-4 text-muted-foreground" />
+                  <span className="font-medium text-xs">View Details</span>
                 </DropdownMenuItem>
+                
                 {!isBuiltIn && (
-                  <DropdownMenuItem
-                    className="gap-2 cursor-pointer text-emerald-600 focus:text-emerald-700 focus:bg-emerald-500/10"
-                    onClick={() => onUploadVersion(plugin)}
-                  >
-                    <Upload className="size-3.5" />
-                    Upload Version
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem
+                      className="gap-2.5 cursor-pointer py-2 px-3 rounded-lg text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50"
+                      onClick={() => onUploadVersion(plugin)}
+                    >
+                      <Upload className="size-4" />
+                      <span className="font-medium text-xs">Upload New Version</span>
+                    </DropdownMenuItem>
+                    {/* Add toggle enable if backend supports it */}
+                  </>
                 )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className={cn(
-                    'gap-2 cursor-pointer',
-                    plugin.isEnabled
-                      ? 'text-destructive focus:text-destructive focus:bg-destructive/10'
-                      : 'text-emerald-600 focus:text-emerald-700 focus:bg-emerald-500/10'
-                  )}
-                  onClick={() => onToggleEnable(plugin)}
-                >
-                  {plugin.isEnabled ? (
-                    <>
-                      <ShieldOff className="size-3.5" />
-                      Disable
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="size-3.5" />
-                      Enable
-                    </>
-                  )}
-                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Badge variant="secondary" className={cn(
+              'text-[9px] px-1.5 h-4 font-semibold rounded-md border-none',
+              categoryConfig.className
+            )}>
+              {plugin.category}
+            </Badge>
           </div>
         </div>
 
-        {/* Name & Description */}
-        <div className="space-y-1 mb-3">
-          <h3 className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors duration-200">
-            {plugin.displayName}
-          </h3>
-          <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed min-h-[2.75em]">
-            {plugin.description || 'No description available.'}
-          </p>
-        </div>
+        {/* Footer: Version Info */}
+        <div className="mt-auto pt-3 border-t border-border/40 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Tag className="size-3 text-muted-foreground/40" />
+            <span className="text-[10px] text-muted-foreground/60 font-medium">
+              Unique: <span className="text-foreground/80 font-mono tracking-tighter">{plugin.uniqueName}</span>
+            </span>
+          </div>
 
-        {/* Footer: Category + Version */}
-        <div className="flex items-center justify-between pt-2.5 border-t border-border/30">
-          <span className="text-[10px] text-muted-foreground/70 font-medium truncate max-w-[50%]">
-            {plugin.category || 'Uncategorized'}
-          </span>
           {plugin.latestVersion ? (
-            <div className="flex items-center gap-1">
-              <Tag className="size-2.5 text-muted-foreground/50" />
-              <span className="text-[10px] font-mono font-semibold text-muted-foreground">
+            <Badge variant="outline" className="h-5 px-1.5 bg-background shadow-sm border-border/50">
+              <span className="text-[10px] font-mono font-bold text-primary/80">
                 v{plugin.latestVersion}
               </span>
-            </div>
+            </Badge>
           ) : (
-            <span className="text-[10px] text-muted-foreground/40 italic">No version</span>
+            <span className="text-[9px] text-muted-foreground/30 italic font-medium">No version</span>
           )}
         </div>
       </CardContent>
@@ -238,6 +236,10 @@ const PluginsPage: React.FC = () => {
   const uploadMutation = useUploadPluginVersion();
   const toggleMutation = useTogglePluginPackage();
 
+  // Dropdown data from API
+  const { data: executionModes } = useExecutionModeDropdown();
+  const { data: categories } = useCategoryDropdown();
+
   // ── Handlers ──
 
   const handleSearch = () => {
@@ -274,6 +276,7 @@ const PluginsPage: React.FC = () => {
   };
 
   const handleUploadFromCard = (plugin: PluginPackageItem) => {
+    if (!plugin.id) return; // built-in plugins have no id
     setUploadTarget({ id: plugin.id, name: plugin.displayName });
     setUploadModalOpen(true);
   };
@@ -301,7 +304,8 @@ const PluginsPage: React.FC = () => {
   };
 
   const handleToggleEnableFromCard = (plugin: PluginPackageItem) => {
-    toggleMutation.mutate({ packageId: plugin.id, enabled: !plugin.isEnabled });
+    if (!plugin.id) return; // built-in plugins can't be toggled
+    toggleMutation.mutate({ packageId: plugin.id, enabled: true });
   };
 
   const handleToggleEnableFromDetail = (packageId: string, enabled: boolean) => {
@@ -381,24 +385,11 @@ const PluginsPage: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Modes</SelectItem>
-                  <SelectItem value="BuiltIn">
-                    <div className="flex items-center gap-2">
-                      <div className="size-2 rounded-full bg-emerald-500" />
-                      Built-in
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="DynamicDll">
-                    <div className="flex items-center gap-2">
-                      <div className="size-2 rounded-full bg-blue-500" />
-                      DLL
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="RemoteGrpc">
-                    <div className="flex items-center gap-2">
-                      <div className="size-2 rounded-full bg-purple-500" />
-                      gRPC
-                    </div>
-                  </SelectItem>
+                  {executionModes?.map((mode) => (
+                    <SelectItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -423,13 +414,11 @@ const PluginsPage: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {['Database', 'Communication', 'Storage', 'Integration', 'Utility', 'Security', 'Analytics', 'AI', 'DevOps', 'Notification'].map(
-                    (cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    )
-                  )}
+                  {categories?.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -471,7 +460,7 @@ const PluginsPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {pageData.items.map((plugin) => (
               <PluginCard
-                key={plugin.id}
+                key={plugin.id || plugin.uniqueName}
                 plugin={plugin}
                 onCardClick={handleCardClick}
                 onUploadVersion={handleUploadFromCard}

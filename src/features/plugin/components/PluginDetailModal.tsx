@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   Info,
@@ -47,7 +48,7 @@ import {
   useToggleVersionActive,
   usePluginVersionDetail,
 } from '@/api/plugins';
-import type { PluginPackageItem, JsonSchemaProperty } from '@/types/plugin';
+import type { PluginPackageItem, JsonSchemaProperty, PluginVersionDetail } from '@/types/plugin';
 import {
   getExecutionModeConfig,
   getPluginIconComponent,
@@ -320,8 +321,6 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
 
-  const { data: detail, isLoading: isDetailLoading } =
-    usePluginPackageDetail(plugin?.id ?? null);
   const { data: versions, isLoading: isVersionsLoading } =
     usePluginPackageVersions(plugin?.id ?? null);
   const toggleVersionMutation = useToggleVersionActive();
@@ -374,7 +373,18 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
   // Handle Toggle Version On/Off
   const handleToggleVersion = (versionId: string, active: boolean) => {
     if (!plugin.id) return;
-    toggleVersionMutation.mutate({ packageId: plugin.id, versionId, active });
+    toggleVersionMutation.mutate({ packageId: plugin.id, versionId, active }, {
+      onSuccess: () => {
+        toast.success(active ? 'Version Activated' : 'Version Deactivated', {
+          description: `Plugin version status updated successfully.`,
+        });
+      },
+      onError: (err: any) => {
+        toast.error('Update Failed', {
+          description: err.response?.data?.message || 'Could not toggle version status.',
+        });
+      },
+    });
   };
 
   return (

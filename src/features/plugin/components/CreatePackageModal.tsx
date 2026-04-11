@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Loader2, Package, Sparkles } from 'lucide-react';
+import { Loader2, Package, Sparkles, Zap } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -15,7 +22,12 @@ import { Button } from '@/components/ui/button';
 interface CreatePackageModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { uniqueName: string; displayName: string; description: string }) => void;
+  onSubmit: (data: { 
+    uniqueName: string; 
+    displayName: string; 
+    description: string;
+    executionMode: number;
+  }) => void;
   isPending: boolean;
 }
 
@@ -28,10 +40,16 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
   const [uniqueName, setUniqueName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
+  const [executionMode, setExecutionMode] = useState<string>('1');
 
   const handleSubmit = () => {
-    if (!uniqueName.trim() || !displayName.trim()) return;
-    onSubmit({ uniqueName: uniqueName.trim(), displayName: displayName.trim(), description: description.trim() });
+    if (!uniqueName.trim() || !displayName.trim() || !executionMode) return;
+    onSubmit({ 
+      uniqueName: uniqueName.trim(), 
+      displayName: displayName.trim(), 
+      description: description.trim(),
+      executionMode: parseInt(executionMode)
+    });
   };
 
   const handleClose = (val: boolean) => {
@@ -39,11 +57,12 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
       setUniqueName('');
       setDisplayName('');
       setDescription('');
+      setExecutionMode('1');
     }
     onOpenChange(val);
   };
 
-  const isValid = uniqueName.trim().length > 0 && displayName.trim().length > 0;
+  const isValid = uniqueName.trim().length > 0 && displayName.trim().length > 0 && !!executionMode;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -79,16 +98,33 @@ const CreatePackageModal: React.FC<CreatePackageModalProps> = ({
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider ml-1">
-              Display Name <span className="text-destructive">*</span>
-            </label>
-            <Input
-              placeholder="e.g. My Custom Plugin"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="h-10 bg-background/60 border-border/50"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider ml-1">
+                Display Name <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="e.g. My Custom Plugin"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="h-10 bg-background/60 border-border/50"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-muted-foreground/80 uppercase tracking-wider ml-1 flex items-center gap-1">
+                <Zap className="size-3 text-amber-500" /> Execution Mode <span className="text-destructive">*</span>
+              </label>
+              <Select value={executionMode} onValueChange={setExecutionMode}>
+                <SelectTrigger className="h-10 bg-background/60 border-border/50">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">DynamicDll</SelectItem>
+                  <SelectItem value="2">RemoteGrpc</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-1.5">

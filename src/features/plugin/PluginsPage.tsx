@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
+
 import {
   Search,
   Plus,
@@ -14,6 +16,7 @@ import {
   Shield,
   Upload,
   AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
 
 import {
@@ -264,13 +267,21 @@ const PluginsPage: React.FC = () => {
     setDetailModalOpen(true);
   };
 
-  const handleCreateSubmit = (data: { uniqueName: string; displayName: string; description: string }) => {
+  const handleCreateSubmit = (data: { uniqueName: string; displayName: string; description: string; executionMode: number }) => {
     createMutation.mutate(data, {
       onSuccess: (result) => {
+        toast.success('Package Created', {
+          description: `Successfully registered ${data.displayName}.`,
+        });
         setCreateModalOpen(false);
         // Open upload modal for the newly created package
         setUploadTarget({ id: result.id, name: data.displayName });
         setUploadModalOpen(true);
+      },
+      onError: (err: any) => {
+        toast.error('Failed to Create Package', {
+          description: err.response?.data?.message || 'An unexpected error occurred.',
+        });
       },
     });
   };
@@ -297,8 +308,16 @@ const PluginsPage: React.FC = () => {
   }) => {
     uploadMutation.mutate(data, {
       onSuccess: () => {
+        toast.success(`Version ${data.version} Uploaded`, {
+          description: 'The plugin bundle has been processed successfully.',
+        });
         setUploadModalOpen(false);
         setUploadTarget(null);
+      },
+      onError: (err: any) => {
+        toast.error('Upload Failed', {
+          description: err.response?.data?.message || 'Check your file format or connection.',
+        });
       },
     });
   };
@@ -309,7 +328,18 @@ const PluginsPage: React.FC = () => {
   };
 
   const handleToggleEnableFromDetail = (packageId: string, enabled: boolean) => {
-    toggleMutation.mutate({ packageId, enabled });
+    toggleMutation.mutate({ packageId, enabled }, {
+      onSuccess: () => {
+        toast.success(enabled ? 'Plugin Activated' : 'Plugin Deactivated', {
+          description: `Plugin package status updated successfully.`,
+        });
+      },
+      onError: (err: any) => {
+        toast.error('Status Update Failed', {
+          description: err.response?.data?.message || 'Could not update plugin status.',
+        });
+      },
+    });
   };
 
   return (

@@ -165,6 +165,7 @@ export interface CreatePluginPackageDto {
   uniqueName: string;
   displayName: string;
   description: string;
+  executionMode: number;
 }
 
 /** DTO for uploading a new version to a plugin package */

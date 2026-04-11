@@ -109,3 +109,124 @@ export interface PackageVersionsResponse {
   data: string[];
 }
 
+// ======================================================================
+// Plugin Package Management Types
+// ======================================================================
+
+/** Execution mode numeric enum mapping from C# backend */
+export const ExecutionModeMap: Record<number, PluginExecutionMode> = {
+  0: 'BuiltIn',
+  1: 'DynamicDll',
+  2: 'RemoteGrpc',
+};
+
+/** A single plugin package in the list/grid — maps to GET /api/plugins/packages */
+export interface PluginPackageItem {
+  /** null for BuiltIn plugins */
+  id: string | null;
+  uniqueName: string;
+  displayName: string;
+  description: string;
+  category: string;
+  icon: string;
+  /** Backend returns a number: 0=BuiltIn, 1=DynamicDll, 2=RemoteGrpc */
+  executionMode: number | string;
+  latestVersion: string | null;
+  isBuiltIn: boolean;
+  isEnabled?: boolean;
+}
+
+/** Paged response for plugin packages */
+export interface PluginPackagePagedResponse {
+  items: PluginPackageItem[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
+/** Version entry for a specific plugin package */
+export interface PluginPackageVersion {
+  id: string;
+  packageId: string;
+  version: string;
+  bucket: string;
+  releaseNotes: string;
+  filePath: string | null;
+  sha256: string | null;
+  createdAt: string;
+  isActive: boolean;
+}
+
+/** DTO for creating a new plugin package */
+export interface CreatePluginPackageDto {
+  uniqueName: string;
+  displayName: string;
+  description: string;
+  executionMode: number;
+}
+
+/** DTO for uploading a new version to a plugin package */
+export interface UploadPluginVersionDto {
+  packageId: string;
+  version: string;
+  bucket: string;
+  releaseNotes: string;
+  file: File;
+}
+
+/** Filter params for listing plugin packages */
+export interface PluginPackageFilters {
+  page: number;
+  size: number;
+  search?: string;
+  executionMode?: string;
+  category?: string;
+}
+
+/** Generic dropdown item from /api/dropdown/* endpoints */
+export interface DropdownItem {
+  value: string;
+  label: string;
+}
+
+/** Plugin package detail (full info including inputs/outputs) */
+export interface PluginPackageDetail {
+  id: string | null;
+  uniqueName: string;
+  displayName: string;
+  description: string;
+  category: string;
+  icon: string;
+  executionMode: number | string;
+  latestVersion: string | null;
+  isBuiltIn: boolean;
+  isEnabled?: boolean;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+  versions: PluginPackageVersion[];
+}
+
+/** Detail for a specific version/built-in plugin — maps to GET /api/plugins/details */
+export interface PluginVersionDetail {
+  name: string;
+  displayName: string;
+  executionMode: string;
+  version: string | null;
+  executionMetadata: ExecutionMetadata | null;
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+}
+
+/** Metadata related to plugin execution (e.g. file size, sha256) */
+export interface ExecutionMetadata {
+  Size: number;
+  Bucket: string;
+  Sha256: string;
+  ObjectKey: string;
+  PluginType: string;
+  OutputSchema?: JsonSchema;
+}
+

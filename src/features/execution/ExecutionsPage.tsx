@@ -71,7 +71,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 import type { WorkflowExecution, ExecutionFilters } from '@/types/execution';
 
 /**
@@ -397,10 +397,9 @@ const ExecutionsPage: React.FC = () => {
       header: 'Duration',
       cell: ({ row }) => {
         const seconds = row.original.durationSeconds;
-        if (seconds === null || seconds === undefined) return <span className="text-xs text-muted-foreground">-</span>;
         return (
-          <span className="text-xs font-mono font-medium text-muted-foreground">
-            {seconds.toFixed(2)}s
+          <span className="text-xs font-mono font-medium text-muted-foreground whitespace-nowrap">
+            {formatDuration(seconds)}
           </span>
         );
       },

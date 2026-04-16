@@ -44,3 +44,15 @@ export interface StatusDropdownItem {
   value: string;
   label: string;
 }
+
+export interface ExecutionLog {
+  id: number;
+  instanceId: string;
+  executionPointerId: string | null;
+  nodeId: string;
+  level: number;
+  event: string;
+  message: string;
+  metadata: any | null;
+  createdAt: string;
+}

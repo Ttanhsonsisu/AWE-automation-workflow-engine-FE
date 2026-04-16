@@ -39,12 +39,14 @@ import {
 import { cn } from '@/lib/utils';
 import { updateWorkflowDefinition, startWorkflow, suspendExecution, resumeExecution } from '@/services/workflowService';
 import { toast } from 'sonner';
+import { useWorkflowInputData } from '@/api/workflows';
 
 import { useWorkflowRealtime } from '../hooks/useWorkflowRealtime';
 
 export const WorkflowTopbar: React.FC = () => {
   const navigate = useNavigate();
   const {
+    workflowId,
     workflowName,
     setWorkflowName,
     isSaved,
@@ -82,7 +84,7 @@ export const WorkflowTopbar: React.FC = () => {
       (
         (isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' && currentInstanceId !== null) ||
         !isSaved
-      ) && 
+      ) &&
       currentLocation.pathname !== nextLocation.pathname
   );
 
@@ -115,12 +117,12 @@ export const WorkflowTopbar: React.FC = () => {
         await suspendExecution(currentInstanceId);
         setExecuting(false);
         setWorkflowExecutionStatus('suspended');
-        toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng trước khi thoát."});
+        toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng trước khi thoát." });
       } catch (error: any) {
         toast.error("Tạm dừng thất bại", { description: error?.response?.data?.message || error?.message || "Không thể suspend." });
       }
     }
-    
+
     setIsExiting(false);
     setIsExitDialogOpen(false);
     if (blocker.state === 'blocked') {
@@ -141,17 +143,53 @@ export const WorkflowTopbar: React.FC = () => {
   const [isRunDialogOpen, setIsRunDialogOpen] = React.useState(false);
   const [jobName, setJobName] = React.useState('');
   const [hasInput, setHasInput] = React.useState(false);
-  const [inputData, setInputData] = React.useState<{key: string, value: string}[]>([
-    { key: 'winnerName', value: 'test 123' },
-    { key: 'raceName', value: '123' }
-  ]);
+  const [inputData, setInputData] = React.useState<{ key: string, value: string }[]>([]);
+  const { data: savedInputData, isLoading: isLoadingInputData } = useWorkflowInputData(workflowId || null);
+
+  React.useEffect(() => {
+    if (!isRunDialogOpen) return;
+
+    setJobName(workflowName || 'Untitled Workflow');
+
+    if (isLoadingInputData) return;
+
+    if (savedInputData && Object.keys(savedInputData).length > 0) {
+      const pairs = Object.entries(savedInputData).map(([key, value]) => ({
+        key,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+      }));
+      setInputData(pairs);
+      setHasInput(true);
+      return;
+    }
+
+    setInputData([]);
+    setHasInput(false);
+  }, [isRunDialogOpen, workflowName, savedInputData, isLoadingInputData]);
 
   const handleConfirmRun = () => {
     setIsRunDialogOpen(false);
-    
+
     // Prepare dynamic input data if enabled
     const finalInputData = hasInput ? inputData.reduce((acc, curr) => {
-      if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
+      const key = curr.key.trim();
+      if (!key) return acc;
+
+      let value: any = curr.value.trim();
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (!isNaN(Number(value)) && value !== '') value = Number(value);
+      else {
+        try {
+          if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+            value = JSON.parse(value);
+          }
+        } catch {
+          // Keep raw string when JSON parsing fails.
+        }
+      }
+
+      acc[key] = value;
       return acc;
     }, {} as Record<string, any>) : undefined;
 
@@ -180,7 +218,7 @@ export const WorkflowTopbar: React.FC = () => {
       const steps = nodes.map(node => {
         const inputSchema = node.data.pluginMetadata?.inputSchema as any;
         const hasInputs = inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
-        
+
         let isConfigured = node.data.config?.isConfigured;
         if (!hasInputs) {
           isConfigured = true;
@@ -208,7 +246,7 @@ export const WorkflowTopbar: React.FC = () => {
       const transitions = edges.map((edge, index) => {
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
-        
+
         return {
           Id: `Transition_${index}`, // Optional if needed
           Source: (sourceNode?.data.config?.stepId as string) || edge.source,
@@ -233,7 +271,7 @@ export const WorkflowTopbar: React.FC = () => {
       if (result && result.success) {
         toast.success("Lưu thành công", { description: "Định nghĩa Workflow đã được cập nhật." });
         markSaved();
-        
+
         // Purge react-query cache completely to force hard-fetch on re-edit
         queryClient.removeQueries({ queryKey: ['workflow', workflowId] });
         queryClient.invalidateQueries({ queryKey: ['workflows'] });
@@ -274,10 +312,10 @@ export const WorkflowTopbar: React.FC = () => {
 
   const handleTestExecution = async (customInputPayload?: Record<string, any>) => {
     if (isExecuting) return;
-    
+
     const store = useWorkflowStore.getState();
     const { nodes, edges, updateNodeData, workflowId } = store;
-    
+
     const startNode = nodes.find((n) => n.type === 'startNode');
 
     if (!startNode) {
@@ -307,7 +345,7 @@ export const WorkflowTopbar: React.FC = () => {
         IsTest: true,
         StopAtStepId: null
       };
-      
+
       const response = await startWorkflow(requestPayload);
       if (response?.success) {
         toast.success("Đã gửi yêu cầu chạy Workflow", {
@@ -336,7 +374,7 @@ export const WorkflowTopbar: React.FC = () => {
       await suspendExecution(currentInstanceId);
       setExecuting(false);
       setWorkflowExecutionStatus('suspended');
-      toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng."});
+      toast.success("Đã gửi lệnh Suspend", { description: "Workflow đang được tạm dừng." });
     } catch (error: any) {
       toast.error("Tạm dừng thất bại", { description: error?.response?.data?.message || error?.message || "Không thể suspend." });
     }
@@ -348,7 +386,7 @@ export const WorkflowTopbar: React.FC = () => {
       await resumeExecution(currentInstanceId);
       setExecuting(true);
       setWorkflowExecutionStatus('running');
-      toast.success("Đã gửi lệnh Resume", { description: "Workflow sẽ tiếp tục chạy."});
+      toast.success("Đã gửi lệnh Resume", { description: "Workflow sẽ tiếp tục chạy." });
     } catch (error: any) {
       toast.error("Tiếp tục thất bại", { description: error?.response?.data?.message || error?.message || "Không thể resume." });
     }
@@ -372,63 +410,63 @@ export const WorkflowTopbar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="bottom">Back to Workflows</TooltipContent>
           </Tooltip>
-          
+
           <div className="flex flex-col gap-1 w-64">
-             <h1 className="text-[18px] font-bold text-foreground leading-none tracking-tight">Workflow Builder</h1>
-             <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground mt-1">
-                              <span onClick={handleBackClick} className="hover:text-primary cursor-pointer transition-colors">Workflows</span>
-               <span className="text-border">/</span>
-               <span className="text-foreground truncate max-w-[150px]">{workflowName || 'Customer Onboarding'}</span>
-             </div>
+            <h1 className="text-[18px] font-bold text-foreground leading-none tracking-tight">Workflow Builder</h1>
+            <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground mt-1">
+              <span onClick={handleBackClick} className="hover:text-primary cursor-pointer transition-colors">Workflows</span>
+              <span className="text-border">/</span>
+              <span className="text-foreground truncate max-w-[150px]">{workflowName || 'Customer Onboarding'}</span>
+            </div>
           </div>
         </div>
 
         {/* CENTER: Execution Mode / SignalR Status Indicator */}
         <div className="flex-1 flex justify-center items-center">
-            {canvasMode === 'execution' && (
-               <div className={cn(
-                 "flex items-center gap-2.5 px-4 py-1.5 rounded-full border shadow-sm text-sm font-bold animate-in fade-in zoom-in duration-300",
-                 connectionStatus === 'Connected' 
-                   ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                   : connectionStatus === 'Reconnecting' || connectionStatus === 'Disconnected' && currentInstanceId 
-                     ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                     : "bg-primary/10 text-primary border-primary/20"
-               )}>
-                  <div className="relative flex size-2">
-                    {connectionStatus === 'Connected' ? (
-                      <>
-                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></div>
-                        <div className="relative inline-flex rounded-full size-2 bg-emerald-500"></div>
-                      </>
-                    ) : connectionStatus === 'Reconnecting' ? (
-                      <>
-                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></div>
-                        <div className="relative inline-flex rounded-full size-2 bg-amber-500"></div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></div>
-                        <div className="relative inline-flex rounded-full size-2 bg-primary"></div>
-                      </>
-                    )}
-                  </div>
-                  {connectionStatus === 'Connected' ? 'Live Execution' : connectionStatus === 'Reconnecting' ? 'Reconnecting...' : 'Execution Mode'}
-               </div>
-            )}
-            
-            {/* Global Execution Status Badge */}
-            {canvasMode === 'execution' && workflowExecutionStatus && (
-              <div className={cn(
-                "ml-3 px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider animate-in fade-in zoom-in duration-300 border-2 select-none",
-                workflowExecutionStatus.toLowerCase() === 'completed' ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30 dark:text-emerald-400" :
-                workflowExecutionStatus.toLowerCase() === 'failed' ? "bg-destructive/15 text-destructive border-destructive/30" :
-                workflowExecutionStatus.toLowerCase() === 'running' ? "bg-blue-500/15 text-blue-600 border-blue-500/30 dark:text-blue-400" :
-                workflowExecutionStatus.toLowerCase() === 'suspended' ? "bg-amber-500/15 text-amber-600 border-amber-500/30 dark:text-amber-400" :
-                "bg-secondary/50 text-muted-foreground border-border/50"
-              )}>
-                {workflowExecutionStatus}
+          {canvasMode === 'execution' && (
+            <div className={cn(
+              "flex items-center gap-2.5 px-4 py-1.5 rounded-full border shadow-sm text-sm font-bold animate-in fade-in zoom-in duration-300",
+              connectionStatus === 'Connected'
+                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                : connectionStatus === 'Reconnecting' || connectionStatus === 'Disconnected' && currentInstanceId
+                  ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                  : "bg-primary/10 text-primary border-primary/20"
+            )}>
+              <div className="relative flex size-2">
+                {connectionStatus === 'Connected' ? (
+                  <>
+                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></div>
+                    <div className="relative inline-flex rounded-full size-2 bg-emerald-500"></div>
+                  </>
+                ) : connectionStatus === 'Reconnecting' ? (
+                  <>
+                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75"></div>
+                    <div className="relative inline-flex rounded-full size-2 bg-amber-500"></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></div>
+                    <div className="relative inline-flex rounded-full size-2 bg-primary"></div>
+                  </>
+                )}
               </div>
-            )}
+              {connectionStatus === 'Connected' ? 'Live Execution' : connectionStatus === 'Reconnecting' ? 'Reconnecting...' : 'Execution Mode'}
+            </div>
+          )}
+
+          {/* Global Execution Status Badge */}
+          {canvasMode === 'execution' && workflowExecutionStatus && (
+            <div className={cn(
+              "ml-3 px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider animate-in fade-in zoom-in duration-300 border-2 select-none",
+              workflowExecutionStatus.toLowerCase() === 'completed' ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30 dark:text-emerald-400" :
+                workflowExecutionStatus.toLowerCase() === 'failed' ? "bg-destructive/15 text-destructive border-destructive/30" :
+                  workflowExecutionStatus.toLowerCase() === 'running' ? "bg-blue-500/15 text-blue-600 border-blue-500/30 dark:text-blue-400" :
+                    workflowExecutionStatus.toLowerCase() === 'suspended' ? "bg-amber-500/15 text-amber-600 border-amber-500/30 dark:text-amber-400" :
+                      "bg-secondary/50 text-muted-foreground border-border/50"
+            )}>
+              {workflowExecutionStatus}
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Controls */}
@@ -438,7 +476,7 @@ export const WorkflowTopbar: React.FC = () => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="text-emerald-500 hover:text-emerald-600 transition-colors cursor-help bg-emerald-500/10 p-1.5 rounded-md">
-                   <CheckCircle2 className="size-4" />
+                  <CheckCircle2 className="size-4" />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="bottom">Saved</TooltipContent>
@@ -462,8 +500,8 @@ export const WorkflowTopbar: React.FC = () => {
                   onClick={() => setCanvasMode('editor')}
                   className={cn(
                     "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200",
-                    canvasMode === 'editor' 
-                      ? "bg-background text-primary shadow-sm scale-[1.02]" 
+                    canvasMode === 'editor'
+                      ? "bg-background text-primary shadow-sm scale-[1.02]"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   )}
                 >
@@ -482,8 +520,8 @@ export const WorkflowTopbar: React.FC = () => {
                   onClick={() => setCanvasMode('execution')}
                   className={cn(
                     "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 relative",
-                    canvasMode === 'execution' 
-                      ? "bg-background text-primary shadow-sm scale-[1.02]" 
+                    canvasMode === 'execution'
+                      ? "bg-background text-primary shadow-sm scale-[1.02]"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                   )}
                 >
@@ -575,10 +613,10 @@ export const WorkflowTopbar: React.FC = () => {
           <div className="flex flex-col gap-5 py-2">
             <div className="space-y-2 text-left">
               <Label className="text-sm font-semibold">Job Name</Label>
-              <Input 
-                value={jobName} 
-                onChange={(e) => setJobName(e.target.value)} 
-                placeholder="Enter job name..." 
+              <Input
+                value={jobName}
+                onChange={(e) => setJobName(e.target.value)}
+                placeholder="Enter job name..."
                 className="bg-secondary/30 focus-visible:ring-primary/50"
               />
             </div>
@@ -589,34 +627,42 @@ export const WorkflowTopbar: React.FC = () => {
                   <Label className="text-sm font-semibold cursor-pointer" htmlFor="config-input">Configure Input Data</Label>
                   <span className="text-xs text-muted-foreground mr-4">Provide dynamic execution variables that override default node inputs</span>
                 </div>
-                <Switch 
-                  id="config-input" 
-                  checked={hasInput} 
-                  onCheckedChange={setHasInput} 
+                <Switch
+                  id="config-input"
+                  checked={hasInput}
+                  onCheckedChange={setHasInput}
+                  disabled={isLoadingInputData}
                   className="data-[state=checked]:bg-primary"
                 />
               </div>
 
               {hasInput && (
                 <div className="pt-2 border-t border-border/50 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {isLoadingInputData ? (
+                    <div className="flex items-center justify-center py-6 text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin mr-2" />
+                      Đang tải Input Variables...
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-center justify-between mb-3 text-left">
                     <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Variables</Label>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setInputData([...inputData, { key: '', value: '' }])}
                       className="h-7 px-2.5 text-xs font-semibold text-primary/80 hover:text-primary hover:bg-primary/10 transition-colors"
                     >
                       <Plus className="size-3.5 mr-1" /> Add Field
                     </Button>
                   </div>
-                  
+
                   {inputData.length > 0 ? (
                     <div className="max-h-[220px] overflow-y-auto pr-2 -mr-2 space-y-2.5 custom-scrollbar">
                       {inputData.map((item, idx) => (
                         <div key={idx} className="flex items-center gap-2 group">
-                          <Input 
-                            placeholder="Key (e.g. winnerName)" 
+                          <Input
+                            placeholder="Key (e.g. winnerName)"
                             className="h-9 text-sm font-mono bg-background"
                             value={item.key}
                             onChange={(e) => {
@@ -625,8 +671,8 @@ export const WorkflowTopbar: React.FC = () => {
                               setInputData(newData);
                             }}
                           />
-                          <Input 
-                            placeholder="Value" 
+                          <Input
+                            placeholder="Value"
                             className="h-9 text-sm bg-background"
                             value={item.value}
                             onChange={(e) => {
@@ -635,9 +681,9 @@ export const WorkflowTopbar: React.FC = () => {
                               setInputData(newData);
                             }}
                           />
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="size-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
                             onClick={() => setInputData(inputData.filter((_, i) => i !== idx))}
                           >
@@ -652,6 +698,8 @@ export const WorkflowTopbar: React.FC = () => {
                       <p className="text-xs text-muted-foreground">Click "Add Field" to inject custom variables.</p>
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -661,7 +709,11 @@ export const WorkflowTopbar: React.FC = () => {
             <Button variant="ghost" onClick={() => setIsRunDialogOpen(false)} className="hover:bg-secondary">
               Cancel
             </Button>
-            <Button onClick={handleConfirmRun} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95">
+            <Button
+              onClick={handleConfirmRun}
+              disabled={isLoadingInputData}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95"
+            >
               <Play className="size-4 mr-2 fill-current" />
               Run Now
             </Button>
@@ -675,8 +727,8 @@ export const WorkflowTopbar: React.FC = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="size-5" />
-              {isExecuting && workflowExecutionStatus?.toLowerCase() === 'running' 
-                ? 'Cảnh báo Workflow đang chạy' 
+              {isExecuting && workflowExecutionStatus?.toLowerCase() === 'running'
+                ? 'Cảnh báo Workflow đang chạy'
                 : 'Thay đổi chưa được lưu'}
             </DialogTitle>
             <DialogDescription className="pt-2 text-foreground/80">

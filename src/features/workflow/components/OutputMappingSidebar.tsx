@@ -34,6 +34,7 @@ import {
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { startWorkflow, getWorkflowContext } from '@/services/workflowService';
 import { toast } from 'sonner';
+import { useWorkflowInputData } from '@/api/workflows';
 import {
   Dialog,
   DialogContent,
@@ -522,12 +523,31 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
 
   // Run Workflow Dialog State
   const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
-  const [jobName, setJobName] = useState(workflowName || 'Test Run Previous');
+  const [jobName, setJobName] = useState(workflowName || 'Untitled Workflow');
   const [hasInput, setHasInput] = useState(false);
-  const [inputData, setInputData] = useState<{key: string, value: string}[]>([
-    { key: 'winnerName', value: 'test 123' },
-    { key: 'raceName', value: '123' }
-  ]);
+  const [inputData, setInputData] = useState<{key: string, value: string}[]>([]);
+  const { data: savedInputData, isLoading: isLoadingInputData } = useWorkflowInputData(workflowId || null);
+
+  React.useEffect(() => {
+    if (!isRunDialogOpen) return;
+
+    setJobName(workflowName || 'Untitled Workflow');
+
+    if (isLoadingInputData) return;
+
+    if (savedInputData && Object.keys(savedInputData).length > 0) {
+      const pairs = Object.entries(savedInputData).map(([key, value]) => ({
+        key,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+      }));
+      setInputData(pairs);
+      setHasInput(true);
+      return;
+    }
+
+    setInputData([]);
+    setHasInput(false);
+  }, [isRunDialogOpen, workflowName, savedInputData, isLoadingInputData]);
 
   const metaTree = useMemo(
     () => executionData?.Meta ? dataToTree(executionData.Meta, 'Meta') : [],
@@ -592,7 +612,24 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
     
     // Prepare dynamic input data if enabled
     const finalInputData = hasInput ? inputData.reduce((acc, curr) => {
-      if (curr.key.trim()) acc[curr.key.trim()] = curr.value;
+      const key = curr.key.trim();
+      if (!key) return acc;
+
+      let value: any = curr.value.trim();
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (!isNaN(Number(value)) && value !== '') value = Number(value);
+      else {
+        try {
+          if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+            value = JSON.parse(value);
+          }
+        } catch {
+          // Keep raw string when JSON parsing fails.
+        }
+      }
+
+      acc[key] = value;
       return acc;
     }, {} as Record<string, any>) : undefined;
 
@@ -876,12 +913,20 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
                   id="config-input" 
                   checked={hasInput} 
                   onCheckedChange={setHasInput} 
+                  disabled={isLoadingInputData}
                   className="data-[state=checked]:bg-primary"
                 />
               </div>
 
               {hasInput && (
                 <div className="pt-2 border-t border-border/50 animate-in fade-in slide-in-from-top-2 duration-300">
+                  {isLoadingInputData ? (
+                    <div className="flex items-center justify-center py-6 text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin mr-2" />
+                      Đang tải Input Variables...
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-center justify-between mb-3 text-left">
                     <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Biến Input</Label>
                     <Button 
@@ -935,6 +980,8 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
                       <p className="text-xs text-muted-foreground">Bấm "Thêm biến" để bắt đầu cấu hình.</p>
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -944,7 +991,11 @@ export const OutputMappingSidebar: React.FC<OutputMappingSidebarProps> = ({
             <Button variant="ghost" onClick={() => setIsRunDialogOpen(false)} className="hover:bg-secondary">
               Hủy
             </Button>
-            <Button onClick={handleConfirmRun} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95">
+            <Button
+              onClick={handleConfirmRun}
+              disabled={isLoadingInputData}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-6 shadow-md transition-all active:scale-95"
+            >
               <Play className="size-4 mr-2 fill-current" />
               Bắt đầu chạy
             </Button>

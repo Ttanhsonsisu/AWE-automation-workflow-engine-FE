@@ -21,6 +21,7 @@ import { useWorkflowStore, type WorkflowNode, type NodeCategory } from '@/stores
 import { WorkflowTopbar } from './components/WorkflowTopbar';
 import { NodeLibrarySheet } from './components/NodeLibrarySheet';
 import { NodeConfigPanel } from './components/NodeConfigPanel';
+import { WorkflowInputConfigDialog } from './WorkflowInputConfigDialog';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -28,7 +29,7 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { Plus } from 'lucide-react';
+import { Plus, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePluginStore } from '@/stores/pluginStore';
 import { hydrateWorkflowFromDefinition, identifyPendingPluginDetails } from './utils/workflowHydration';
@@ -57,6 +58,7 @@ const WorkflowCanvas: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodeLibraryOpen, setNodeLibraryOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [logPanelVisible, setLogPanelVisible] = useState(false);
 
   const {
@@ -385,6 +387,20 @@ const WorkflowCanvas: React.FC = () => {
                   </TooltipTrigger>
                   <TooltipContent side="left">Add Node</TooltipContent>
                 </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setConfigDialogOpen(true)}
+                      size="icon"
+                      variant="outline"
+                      className="size-10 rounded-xl bg-card/90 hover:bg-secondary text-foreground shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 border-border/50"
+                    >
+                      <Settings className="size-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Config Workflow Input</TooltipContent>
+                </Tooltip>
               </div>
             </TooltipProvider>
           )}
@@ -419,6 +435,14 @@ const WorkflowCanvas: React.FC = () => {
 
       {/* Node Library Sheet */}
       <NodeLibrarySheet open={nodeLibraryOpen} onOpenChange={setNodeLibraryOpen} />
+
+      {/* Workflow Input Config Dialog */}
+      <WorkflowInputConfigDialog
+        open={configDialogOpen}
+        onOpenChange={setConfigDialogOpen}
+        workflowDefinitionId={id || null}
+        workflowName={workflowDef?.name}
+      />
 
       {/* Node Config Panel */}
       <NodeConfigPanel nodeId={editingNodeId} onClose={() => setEditingNodeId(null)} />

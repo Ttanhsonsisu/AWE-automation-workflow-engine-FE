@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { WorkflowInputConfigDialog } from './WorkflowInputConfigDialog';
+import { WorkflowRunDialog } from './WorkflowRunDialog';
 
 interface WorkflowRowData {
   groupName: string;
@@ -86,6 +87,15 @@ const WorkflowListPage: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
   const [inputConfigDialog, setInputConfigDialog] = useState<{
+    open: boolean;
+    definitionId: string | null;
+    workflowName?: string;
+  }>({
+    open: false,
+    definitionId: null,
+  });
+  
+  const [runConfigDialog, setRunConfigDialog] = useState<{
     open: boolean;
     definitionId: string | null;
     workflowName?: string;
@@ -308,7 +318,8 @@ const WorkflowListPage: React.FC = () => {
               title="Run Workflow"
               variant="outline" 
               size="sm" 
-              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors border-border/50"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 transition-colors border-border/50"
+              onClick={() => setRunConfigDialog({ open: true, definitionId: wf.id, workflowName: row.original.groupName })}
             >
               <Play className="size-[13px]" /> Run
             </Button>
@@ -527,6 +538,14 @@ const WorkflowListPage: React.FC = () => {
         onOpenChange={(open) => setInputConfigDialog(prev => ({ ...prev, open }))}
         workflowDefinitionId={inputConfigDialog.definitionId}
         workflowName={inputConfigDialog.workflowName}
+      />
+
+      <WorkflowRunDialog
+        open={runConfigDialog.open}
+        onOpenChange={(open) => setRunConfigDialog(prev => ({ ...prev, open }))}
+        workflowDefinitionId={runConfigDialog.definitionId}
+        workflowName={runConfigDialog.workflowName}
+        onRunSuccess={() => {}}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { 
@@ -250,10 +251,13 @@ const actionMeta: Record<ActionType, {
 };
 
 const ExecutionsPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialDefinitionId = searchParams.get('definitionId');
+
   const [filters, setFilters] = useState<ExecutionFilters>({
     page: 1,
     size: 20,
-    definitionIds: [],
+    definitionIds: initialDefinitionId ? [initialDefinitionId] : [],
     status: undefined,
   });
 

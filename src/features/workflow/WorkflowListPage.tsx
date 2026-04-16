@@ -299,6 +299,7 @@ const WorkflowListPage: React.FC = () => {
               variant="outline" 
               size="sm" 
               className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-muted-foreground hover:text-foreground transition-colors border-border/50"
+              onClick={() => navigate(`/executions?definitionId=${wf.id}`)}
             >
               <Clock className="size-[13px]" /> History
             </Button>

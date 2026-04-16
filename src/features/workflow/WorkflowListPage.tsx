@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock } from 'lucide-react';
+import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock, Settings } from 'lucide-react';
 
 import type { WorkflowGroup, WorkflowVersion } from '@/types';
 import {
@@ -49,6 +49,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { WorkflowInputConfigDialog } from './WorkflowInputConfigDialog';
+import { WorkflowRunDialog } from './WorkflowRunDialog';
 
 interface WorkflowRowData {
   groupName: string;
@@ -84,6 +86,23 @@ const WorkflowListPage: React.FC = () => {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
+  const [inputConfigDialog, setInputConfigDialog] = useState<{
+    open: boolean;
+    definitionId: string | null;
+    workflowName?: string;
+  }>({
+    open: false,
+    definitionId: null,
+  });
+  
+  const [runConfigDialog, setRunConfigDialog] = useState<{
+    open: boolean;
+    definitionId: string | null;
+    workflowName?: string;
+  }>({
+    open: false,
+    definitionId: null,
+  });
   
   // Local state to keep track of user selected version for each group row
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
@@ -287,10 +306,20 @@ const WorkflowListPage: React.FC = () => {
               <Edit className="size-[13px]" /> Edit
             </Button>
             <Button 
+              title="Configure Dynamic Inputs"
+              variant="outline" 
+              size="sm" 
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-foreground hover:text-primary transition-colors border-border/50"
+              onClick={() => setInputConfigDialog({ open: true, definitionId: wf.id, workflowName: row.original.groupName })}
+            >
+              <Settings className="size-[13px]" /> Inputs
+            </Button>
+            <Button 
               title="Run Workflow"
               variant="outline" 
               size="sm" 
-              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors border-border/50"
+              className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 transition-colors border-border/50"
+              onClick={() => setRunConfigDialog({ open: true, definitionId: wf.id, workflowName: row.original.groupName })}
             >
               <Play className="size-[13px]" /> Run
             </Button>
@@ -299,6 +328,7 @@ const WorkflowListPage: React.FC = () => {
               variant="outline" 
               size="sm" 
               className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-muted-foreground hover:text-foreground transition-colors border-border/50"
+              onClick={() => navigate(`/executions?definitionId=${wf.id}`)}
             >
               <Clock className="size-[13px]" /> History
             </Button>
@@ -502,6 +532,21 @@ const WorkflowListPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      <WorkflowInputConfigDialog 
+        open={inputConfigDialog.open}
+        onOpenChange={(open) => setInputConfigDialog(prev => ({ ...prev, open }))}
+        workflowDefinitionId={inputConfigDialog.definitionId}
+        workflowName={inputConfigDialog.workflowName}
+      />
+
+      <WorkflowRunDialog
+        open={runConfigDialog.open}
+        onOpenChange={(open) => setRunConfigDialog(prev => ({ ...prev, open }))}
+        workflowDefinitionId={runConfigDialog.definitionId}
+        workflowName={runConfigDialog.workflowName}
+        onRunSuccess={() => {}}
+      />
     </div>
   );
 };

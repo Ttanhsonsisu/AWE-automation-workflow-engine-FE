@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { 
@@ -20,6 +21,7 @@ import {
   Play,
   RefreshCw,
   MoreHorizontal,
+  Terminal,
 } from 'lucide-react';
 
 import { 
@@ -35,6 +37,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ExecutionLogsDialog } from './ExecutionLogsDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import {
@@ -248,10 +251,13 @@ const actionMeta: Record<ActionType, {
 };
 
 const ExecutionsPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialDefinitionId = searchParams.get('definitionId');
+
   const [filters, setFilters] = useState<ExecutionFilters>({
     page: 1,
     size: 20,
-    definitionIds: [],
+    definitionIds: initialDefinitionId ? [initialDefinitionId] : [],
     status: undefined,
   });
 
@@ -266,6 +272,14 @@ const ExecutionsPage: React.FC = () => {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  const [logsDialog, setLogsDialog] = useState<{
+    open: boolean;
+    execution: WorkflowExecution | null;
+  }>({
+    open: false,
+    execution: null,
+  });
 
   const { data: pageData, isLoading, error } = useExecutions(filters);
   const { data: definitions } = useWorkflowDefinitionsDropdown();
@@ -434,6 +448,23 @@ const ExecutionsPage: React.FC = () => {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>View Details</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Logs button - always visible */}
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary transition-colors hover:bg-primary/5"
+                    onClick={() => setLogsDialog({ open: true, execution })}
+                  >
+                    <Terminal className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>View Logs</TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
@@ -888,6 +919,13 @@ const ExecutionsPage: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Logs Dialog ────────────────────────────────── */}
+      <ExecutionLogsDialog 
+        open={logsDialog.open} 
+        onOpenChange={(open) => setLogsDialog(prev => ({ ...prev, open }))}
+        execution={logsDialog.execution}
+      />
     </div>
   );
 };

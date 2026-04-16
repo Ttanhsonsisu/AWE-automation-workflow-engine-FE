@@ -120,3 +120,17 @@ export const useCancelExecution = () => {
   });
 };
 
+export const fetchExecutionLogs = async (instanceId: string) => {
+  const { data } = await apiClient.get(`/executions/${instanceId}/logs`);
+  return data.data; // Assuming it returns { success: true, data: ExecutionLog[] }
+};
+
+export const useExecutionLogs = (instanceId: string | null, isRunning: boolean) => {
+  return useQuery({
+    queryKey: ['execution-logs', instanceId],
+    queryFn: () => fetchExecutionLogs(instanceId as string),
+    enabled: !!instanceId,
+    refetchInterval: isRunning ? 3000 : false, // Autorefresh every 3 seconds if running
+  });
+};
+

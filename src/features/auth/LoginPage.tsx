@@ -1,27 +1,20 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuth } from 'react-oidc-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Zap } from 'lucide-react';
+import { Zap, Shield, Loader2, LogIn } from 'lucide-react';
 
+/**
+ * LoginPage — Now acts as a "landing" page that triggers Keycloak SSO login.
+ * 
+ * Since we use Keycloak for authentication, the actual login form is hosted by Keycloak.
+ * This page shows the app branding and a button to initiate the OIDC login flow.
+ */
 const LoginPage: React.FC = () => {
-  const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const auth = useAuth();
 
-  const handleDemoLogin = () => {
-    login(
-      {
-        id: 'demo-user-1',
-        name: 'Admin User',
-        email: 'admin@autoflow.dev',
-        roles: ['admin'],
-      },
-      'demo-jwt-token-placeholder'
-    );
-    navigate('/dashboard');
+  const handleKeycloakLogin = () => {
+    auth.signinRedirect();
   };
 
   return (
@@ -40,50 +33,45 @@ const LoginPage: React.FC = () => {
 
         <Card className="bg-card border-border shadow-sm">
           <CardHeader className="text-center">
-            <CardTitle className="text-lg">Sign in to your account</CardTitle>
+            <CardTitle className="text-lg">Welcome back</CardTitle>
             <CardDescription>
-              Enter your credentials or use SSO to continue.
+              Sign in with your organization account to continue.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                placeholder="admin@autoflow.dev"
-                className="transition-all duration-200"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                className="transition-all duration-200"
-              />
-            </div>
             <Button
-              onClick={handleDemoLogin}
-              className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/25 transition-all duration-200 active:scale-[0.98]"
+              onClick={handleKeycloakLogin}
+              disabled={auth.isLoading}
+              className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/25 transition-all duration-200 active:scale-[0.98] h-11"
             >
-              Sign in (Demo)
+              {auth.isLoading ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <LogIn className="size-4 mr-2" />
+                  Sign in with Keycloak SSO
+                </>
+              )}
             </Button>
-            <div className="relative my-2">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-              </div>
+
+            {/* Security badge */}
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <Shield className="size-3.5 text-emerald-500" />
+              <span className="text-xs text-muted-foreground">
+                Secured by Keycloak OpenID Connect
+              </span>
             </div>
-            <Button
-              variant="outline"
-              className="w-full transition-all duration-200 active:scale-[0.98]"
-              disabled
-            >
-              🔑 Keycloak SSO (Coming Soon)
-            </Button>
+
+            {/* Error display */}
+            {auth.error && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                <p className="font-medium">Authentication failed</p>
+                <p className="text-xs mt-1 opacity-80">{auth.error.message}</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

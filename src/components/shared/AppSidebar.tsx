@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useSidebarStore } from '@/stores/sidebarStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useKeycloakLogout } from '@/hooks/useKeycloakLogout';
 import {
   Tooltip,
   TooltipContent,
@@ -45,7 +46,8 @@ const navItems = [
 
 export const AppSidebar: React.FC = () => {
   const { isCollapsed, toggle } = useSidebarStore();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
+  const logout = useKeycloakLogout();
   const location = useLocation();
 
   return (

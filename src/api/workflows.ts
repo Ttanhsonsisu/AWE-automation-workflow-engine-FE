@@ -179,3 +179,34 @@ export const useDeleteWorkflow = () => {
     },
   });
 };
+
+// ── GET & UPDATE Workflow Input Data ──
+export const fetchWorkflowInputData = async (id: string): Promise<Record<string, any> | null> => {
+  const { data } = await apiClient.get(`/workflows/definitions/${id}/input-data`);
+  return data.data;
+};
+
+export const useWorkflowInputData = (id: string | null) => {
+  return useQuery({
+    queryKey: ['workflow-input-data', id],
+    queryFn: () => fetchWorkflowInputData(id as string),
+    enabled: !!id,
+  });
+};
+
+export const updateWorkflowInputData = async ({ id, inputData }: { id: string; inputData: Record<string, any> | null }): Promise<any> => {
+  const { data } = await apiClient.put(`/workflows/definitions/${id}/input-data`, {
+    InputData: inputData,
+  });
+  return data.data;
+};
+
+export const useUpdateWorkflowInputData = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateWorkflowInputData,
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['workflow-input-data', variables.id], variables.inputData);
+    },
+  });
+};

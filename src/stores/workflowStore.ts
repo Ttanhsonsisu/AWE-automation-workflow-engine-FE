@@ -57,6 +57,8 @@ export interface NodePluginMetadata {
   packageId?: string | null;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  triggerSource?: string;
+  isSingleton?: boolean;
 }
 
 export interface NodeConfigData {
@@ -100,7 +102,7 @@ interface WorkflowState {
   isSaved: boolean;
   isExecuting: boolean;
   workflowExecutionStatus: string | null;
-  
+
   canvasMode: 'editor' | 'execution';
   executionLogs: ExecutionLogItem[];
   currentInstanceId: string | null;
@@ -278,24 +280,24 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       nodes: state.nodes.map((n) =>
         n.id === nodeId
           ? {
-              ...n,
-              data: {
-                ...n.data,
-                pluginMetadata: {
-                  ...n.data.pluginMetadata,
-                  version: newVersion,
-                },
-                config: {
-                  ...n.data.config,
-                  inputs: {},
-                  isConfigured: false,
-                },
-                uiState: {
-                  ...n.data.uiState,
-                  isValid: true,
-                },
+            ...n,
+            data: {
+              ...n.data,
+              pluginMetadata: {
+                ...n.data.pluginMetadata,
+                version: newVersion,
               },
-            }
+              config: {
+                ...n.data.config,
+                inputs: {},
+                isConfigured: false,
+              },
+              uiState: {
+                ...n.data.uiState,
+                isValid: true,
+              },
+            },
+          }
           : n
       ),
       isSaved: false,
@@ -390,9 +392,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: state.edges.map((e) => ({ ...e, animated: executing })),
     }));
   },
-  
+
   setCanvasMode: (mode) => set({ canvasMode: mode }),
-  
+
   addExecutionLog: (log) => {
     set((state) => ({ executionLogs: [...state.executionLogs, log] }));
   },
@@ -413,12 +415,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   updateExecutionLog: (id, logUpdate) => {
     set((state) => ({
-      executionLogs: state.executionLogs.map(log => 
+      executionLogs: state.executionLogs.map(log =>
         log.id === id ? { ...log, ...logUpdate } : log
       )
     }));
   },
-  
+
   clearExecutionLogs: () => set({ executionLogs: [], workflowExecutionStatus: null }),
 
   setWorkflowExecutionStatus: (status) => set({ workflowExecutionStatus: status }),

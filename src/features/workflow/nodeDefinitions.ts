@@ -123,6 +123,8 @@ export interface NodeDefinition {
   packageId?: string | null;
   /** Plugin version */
   activeVersion?: string;
+  triggerSource?: string;
+  isSingleton?: boolean;
 }
 
 /**
@@ -145,6 +147,8 @@ export function pluginToNodeDefinition(plugin: PluginDefinition): NodeDefinition
     outputSchema: plugin.outputSchema as unknown as Record<string, unknown>,
     packageId: plugin.packageId,
     activeVersion: plugin.activeVersion,
+    triggerSource: plugin.triggerSource ?? (plugin as any).TriggerSource,
+    isSingleton: plugin.isSingleton ?? (plugin as any).IsSingleton,
   };
 }
 

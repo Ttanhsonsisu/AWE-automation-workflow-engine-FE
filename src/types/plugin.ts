@@ -52,6 +52,8 @@ export interface PluginDefinition {
   executionMode: PluginExecutionMode | string;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
+  triggerSource?: string;
+  isSingleton?: boolean;
 }
 
 /** A category group from the catalog API */

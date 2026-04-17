@@ -112,8 +112,8 @@ const WorkflowCanvas: React.FC = () => {
       // ─────────────────────────────────────────────────────────────
       if (initialNodes.length === 0 && workflowDef.definition?.Steps?.length > 0) {
         console.log('[WorkflowEditPage] Triggering hydration for workflow without UiJson');
-        toast.info("Tái tạo giao diện", { 
-          description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..." 
+        toast.info("Tái tạo giao diện", {
+          description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..."
         });
 
         try {
@@ -227,6 +227,35 @@ const WorkflowCanvas: React.FC = () => {
       if (pluginData.outputSchema) pluginMeta.outputSchema = pluginData.outputSchema;
       if (pluginData.packageId) pluginMeta.packageId = pluginData.packageId;
       if (pluginData.activeVersion) pluginMeta.version = pluginData.activeVersion;
+      if (pluginData.triggerSource) pluginMeta.triggerSource = pluginData.triggerSource;
+      const rawSingleton = pluginData.isSingleton;
+      const isDraggingSingleton = rawSingleton === true || rawSingleton === 'true';
+      if (rawSingleton !== undefined) pluginMeta.isSingleton = isDraggingSingleton;
+
+      console.log("[DEBUG ON DROP] pluginMeta constructed: ", JSON.parse(JSON.stringify(pluginMeta)));
+      console.log("[DEBUG ON DROP] existing nodes: ", nodes.map(n => ({ type: n.type, pluginName: n.data.pluginMetadata?.name, isSingleton: n.data.pluginMetadata?.isSingleton })));
+
+      const isDraggingTrigger = isStart || !!pluginMeta.triggerSource;
+      if (isDraggingTrigger) {
+        const existingTriggers = nodes.filter(
+          (n) => n.type === 'startNode' || n.data.pluginMetadata?.category?.toLowerCase() === 'trigger' || !!n.data.pluginMetadata?.triggerSource
+        );
+        const existingSingleton = existingTriggers.find(
+          (n) => n.data.pluginMetadata?.isSingleton === true || n.data.pluginMetadata?.isSingleton === 'true'
+        );
+
+        // If the canvas already has a Singleton trigger
+        if (existingSingleton) {
+          toast.error(`Workflow đã có trigger "${existingSingleton.data.pluginMetadata?.displayName}" (tính chất độc quyền), do đó không thể thêm bất kỳ trigger nào khác.`);
+          return;
+        }
+
+        // If dragging a Singleton trigger, but canvas already has other triggers
+        if (isDraggingSingleton && existingTriggers.length > 0) {
+          toast.error(`Trigger "${pluginMeta.displayName}" có tính chất độc quyền. Vui lòng xóa các node trigger khác trên canvas trước khi sử dụng nó.`);
+          return;
+        }
+      }
 
       const newNode: WorkflowNode = {
         id: `${type}-${Date.now()}`,
@@ -246,7 +275,7 @@ const WorkflowCanvas: React.FC = () => {
 
       addNode(newNode);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, nodes]
   );
 
   // ── Selection tracking ──
@@ -293,7 +322,7 @@ const WorkflowCanvas: React.FC = () => {
         e.preventDefault();
         const currentMode = useWorkflowStore.getState().canvasMode;
         useWorkflowStore.getState().setCanvasMode(currentMode === 'editor' ? 'execution' : 'editor');
-        toast.info(currentMode === 'editor' ? "Switch to Preview mode" : "Switch to Design mode", { 
+        toast.info(currentMode === 'editor' ? "Switch to Preview mode" : "Switch to Design mode", {
           duration: 1500,
           position: 'top-center'
         });

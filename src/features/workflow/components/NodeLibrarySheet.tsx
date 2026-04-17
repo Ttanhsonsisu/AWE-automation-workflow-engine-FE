@@ -43,6 +43,8 @@ const DraggableNode: React.FC<{ node: NodeDefinition }> = ({ node }) => {
       outputSchema: node.outputSchema,
       packageId: node.packageId,
       activeVersion: node.activeVersion,
+      triggerSource: node.triggerSource,
+      isSingleton: node.isSingleton,
       icon: '', // icon name not needed for data, resolved at render
     };
     e.dataTransfer.setData('application/reactflow-node-type', node.type);

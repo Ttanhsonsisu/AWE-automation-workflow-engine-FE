@@ -63,7 +63,7 @@ export function computeAutoLayout(
   // Start from all root nodes (nodes with no incoming edges)
   const incomingCount = new Map<string, number>();
   stepIds.forEach(id => incomingCount.set(id, 0));
-  
+
   transitionMap.forEach((targets) => {
     targets.forEach(target => {
       incomingCount.set(target, (incomingCount.get(target) || 0) + 1);

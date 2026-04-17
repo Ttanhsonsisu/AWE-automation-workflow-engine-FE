@@ -241,7 +241,7 @@ const WorkflowCanvas: React.FC = () => {
           (n) => n.type === 'startNode' || n.data.pluginMetadata?.category?.toLowerCase() === 'trigger' || !!n.data.pluginMetadata?.triggerSource
         );
         const existingSingleton = existingTriggers.find(
-          (n) => n.data.pluginMetadata?.isSingleton === true || n.data.pluginMetadata?.isSingleton === 'true'
+          (n) => n.data.pluginMetadata?.isSingleton === true
         );
 
         // If the canvas already has a Singleton trigger

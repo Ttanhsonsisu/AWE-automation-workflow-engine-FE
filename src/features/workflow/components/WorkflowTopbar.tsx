@@ -34,12 +34,14 @@ import {
   Trash2,
   Pause,
   PlayCircle,
-  AlertTriangle
+  AlertTriangle,
+  Globe,
+  GlobeLock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateWorkflowDefinition, startWorkflow, suspendExecution, resumeExecution } from '@/services/workflowService';
 import { toast } from 'sonner';
-import { useWorkflowInputData } from '@/api/workflows';
+import { useWorkflowInputData, useUpdateWorkflowStatus, useWorkflow } from '@/api/workflows';
 
 import { useWorkflowRealtime } from '../hooks/useWorkflowRealtime';
 
@@ -70,6 +72,36 @@ export const WorkflowTopbar: React.FC = () => {
 
   const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = React.useState(false);
+
+  // Publish / Unpublish
+  const { data: workflowDef } = useWorkflow(workflowId || '');
+  const publishMutation = useUpdateWorkflowStatus();
+  const [isPublishing, setIsPublishing] = React.useState(false);
+  const isPublished = workflowDef?.isPublished ?? false;
+
+  const handlePublishToggle = React.useCallback(async () => {
+    if (!workflowId || isPublishing) return;
+    setIsPublishing(true);
+    publishMutation.mutate(
+      { id: workflowId, publish: !isPublished },
+      {
+        onSuccess: () => {
+          toast.success(
+            !isPublished ? 'Workflow published!' : 'Workflow unpublished.',
+            { description: !isPublished ? 'This workflow is now live.' : 'Reverted to draft status.' }
+          );
+        },
+        onError: (err: any) => {
+          toast.error('Failed to update publish status', {
+            description: err?.message || 'Please try again.',
+          });
+        },
+        onSettled: () => {
+          setIsPublishing(false);
+        },
+      }
+    );
+  }, [workflowId, isPublished, isPublishing, publishMutation]);
 
   // Realtime hook integration
   const { connectionStatus } = useWorkflowRealtime(currentInstanceId);
@@ -567,6 +599,42 @@ export const WorkflowTopbar: React.FC = () => {
                 <TooltipContent side="bottom">Tạm dừng workflow đang chạy</TooltipContent>
               </Tooltip>
             ) : null}
+
+            {/* Divider */}
+            <div className="h-6 w-px bg-border/60 mx-1" />
+
+            {/* Publish / Unpublish Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handlePublishToggle}
+                  disabled={isPublishing || !workflowId}
+                  variant="outline"
+                  className={cn(
+                    "h-9 px-4 gap-2 rounded-lg font-semibold text-sm transition-all duration-200 hover:scale-105 active:scale-95 border",
+                    isPublished
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400 shadow-[0_2px_10px_0_rgba(16,185,129,0.15)]"
+                      : "border-border/60 bg-card text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                  )}
+                >
+                  {isPublishing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : isPublished ? (
+                    <Globe className="size-4" />
+                  ) : (
+                    <GlobeLock className="size-4" />
+                  )}
+                  <span>{isPublished ? 'Published' : 'Publish'}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isPublishing
+                  ? 'Updating...'
+                  : isPublished
+                    ? 'Click to unpublish this workflow'
+                    : 'Click to publish this workflow'}
+              </TooltipContent>
+            </Tooltip>
 
             {/* Run Button */}
             <Tooltip>

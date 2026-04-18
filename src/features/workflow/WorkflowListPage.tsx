@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock, Settings } from 'lucide-react';
+import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock, Settings, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import type { WorkflowGroup, WorkflowVersion } from '@/types';
 import {
@@ -83,6 +84,9 @@ const WorkflowListPage: React.FC = () => {
   const updateStatusMutation = useUpdateWorkflowStatus();
   const createWorkflowMutation = useCreateWorkflow();
   const deleteWorkflowMutation = useDeleteWorkflow();
+
+  // Track which workflow definition is currently being published/unpublished
+  const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
@@ -209,19 +213,43 @@ const WorkflowListPage: React.FC = () => {
       cell: ({ row }) => {
         const { activeVersion } = row.original;
         const isPublished = activeVersion.isPublished;
+        const isPending = publishingId === activeVersion.id;
         return (
           <div className="flex items-center gap-3">
-            <Switch
-              checked={isPublished}
-              onCheckedChange={(checked) => {
-                updateStatusMutation.mutate({
-                  id: activeVersion.id,
-                  status: checked ? 'Active' : 'Draft', // Will adapt if backend changes
-                });
-              }}
-              // Disabled if changing
-              disabled={updateStatusMutation.isPending && updateStatusMutation.variables?.id === activeVersion.id}
-            />
+            {isPending ? (
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            ) : (
+              <Switch
+                checked={isPublished}
+                onCheckedChange={(checked) => {
+                  setPublishingId(activeVersion.id);
+                  updateStatusMutation.mutate(
+                    { id: activeVersion.id, publish: checked },
+                    {
+                      onSuccess: () => {
+                        toast.success(
+                          checked
+                            ? `Workflow published successfully.`
+                            : `Workflow unpublished successfully.`
+                        );
+                      },
+                      onError: (err: any) => {
+                        toast.error(
+                          err?.message ||
+                            (checked
+                              ? 'Failed to publish workflow.'
+                              : 'Failed to unpublish workflow.')
+                        );
+                      },
+                      onSettled: () => {
+                        setPublishingId(null);
+                      },
+                    }
+                  );
+                }}
+                disabled={isPending}
+              />
+            )}
             <Badge
               variant="outline"
               className={cn(

@@ -137,29 +137,63 @@ export const useCreateWorkflow = () => {
   });
 };
 
-// ── UPDATE Status (Toggle Publish) ──
-export const updateWorkflowStatus = async ({ id, status }: { id: string; status: WorkflowStatus }): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, 300));
+// ── Publish / Unpublish API Error Shape ──
+export interface WorkflowApiError {
+  code: string;
+  message: string;
+  type: number;
+}
+
+// ── PUBLISH Workflow Definition ──
+export const publishWorkflow = async (id: string): Promise<void> => {
+  try {
+    await apiClient.post(`/workflows/definitions/${id}/publish`);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) {
+      throw new Error(errData.message);
+    }
+    throw err;
+  }
+};
+
+// ── UNPUBLISH Workflow Definition ──
+export const unpublishWorkflow = async (id: string): Promise<void> => {
+  try {
+    await apiClient.post(`/workflows/definitions/${id}/unpublish`);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) {
+      throw new Error(errData.message);
+    }
+    throw err;
+  }
+};
+
+// ── UPDATE Status (Toggle Publish / Unpublish) ──
+export const updateWorkflowStatus = async ({ id, publish }: { id: string; publish: boolean }): Promise<void> => {
+  if (publish) {
+    await publishWorkflow(id);
+  } else {
+    await unpublishWorkflow(id);
+  }
 };
 
 export const useUpdateWorkflowStatus = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateWorkflowStatus,
-    onMutate: async (newStatus) => {
-      await queryClient.cancelQueries({ queryKey: ['workflows'] });
-      const previousWorkflows = queryClient.getQueryData<WorkflowPagedResponse>(['workflows']);
-      
-      // We will refresh the page via invalidateQueries, local update of paged list is complex
-      return { previousWorkflows };
+    onSuccess: (_data, variables) => {
+      // Optimistic update: flip isPublished on the single-definition cache immediately
+      queryClient.setQueryData(['workflow', variables.id], (old: any) => {
+        if (!old) return old;
+        return { ...old, isPublished: variables.publish };
+      });
     },
-    onError: (err, newStatus, context) => {
-      if (context?.previousWorkflows) {
-        queryClient.setQueryData(['workflows'], context.previousWorkflows);
-      }
-    },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      // Hard-refresh both the list and the single definition
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow', variables?.id] });
     },
   });
 };

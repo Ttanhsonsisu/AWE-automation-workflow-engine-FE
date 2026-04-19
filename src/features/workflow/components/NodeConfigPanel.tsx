@@ -49,6 +49,64 @@ import type { IChangeEvent } from '@rjsf/core';
 import { customWidgets, customTemplates } from './rjsf-widgets';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// uiSchema builder from x-* metadata
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+/**
+ * Reads x-widget, x-label, x-data-source-url, x-show-if from each schema
+ * property and produces an RJSF uiSchema that:
+ *   - Routes x-widget="select" + x-data-source-url → DynamicSelectWidget
+ *   - Routes x-widget="textarea" → textarea widget
+ *   - Overrides the displayed label with x-label
+ *   - Stores x-show-if info in ui:options for external conditional rendering
+ */
+function buildUiSchema(schema: JsonSchema): Record<string, unknown> {
+  const uiSchema: Record<string, unknown> = {
+    'ui:submitButtonOptions': { norender: true },
+  };
+
+  if (!schema?.properties) return uiSchema;
+
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    const fieldUi: Record<string, unknown> = {};
+
+    const widget = prop['x-widget'];
+    const label = prop['x-label'];
+    const dataSourceUrl = prop['x-data-source-url'];
+    const showIf = prop['x-show-if'];
+    const group = prop['x-group'];
+
+    // Determine widget
+    if (widget === 'select' && dataSourceUrl) {
+      fieldUi['ui:widget'] = 'DynamicSelectWidget';
+    } else if (widget === 'textarea') {
+      fieldUi['ui:widget'] = 'textarea';
+    } else if (widget === 'select' && !dataSourceUrl) {
+      fieldUi['ui:widget'] = 'SelectWidget';
+    }
+
+    // Override label
+    if (label) {
+      fieldUi['ui:title'] = label;
+    }
+
+    // Store conditional + grouping info for future use
+    const uiOptions: Record<string, unknown> = {};
+    if (dataSourceUrl) uiOptions['dataSourceUrl'] = dataSourceUrl;
+    if (showIf) uiOptions['showIf'] = showIf;
+    if (group) uiOptions['group'] = group;
+    if (Object.keys(uiOptions).length > 0) {
+      fieldUi['ui:options'] = uiOptions;
+    }
+
+    if (Object.keys(fieldUi).length > 0) {
+      uiSchema[key] = fieldUi;
+    }
+  }
+
+  return uiSchema;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Schema $ref resolver
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 /**
@@ -297,6 +355,9 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
     return resolveSchemaRefs(inputSchema);
   }, [inputSchema]);
 
+  // ── Build uiSchema dynamically from x-* metadata in the original inputSchema ──
+  // We read from inputSchema (not rjsfSchema) to preserve x-* extensions before $ref resolution
+  const dynamicUiSchema = useMemo(() => buildUiSchema(inputSchema), [inputSchema]);
 
   // ── Reset form when node changes ──
   useEffect(() => {
@@ -574,9 +635,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                               liveValidate
                               showErrorList={false}
                               noHtml5Validate
-                              uiSchema={{
-                                'ui:submitButtonOptions': { norender: true },
-                              }}
+                              uiSchema={dynamicUiSchema}
                             >
                               <></>
                             </Form>

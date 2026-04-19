@@ -27,8 +27,12 @@ import {
   SquareFunction,
   Plus,
   X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import apiClient from '@/services/apiClient';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Icon resolver for schema property types
@@ -431,6 +435,102 @@ const CustomArrayFieldTemplate: React.FC<any> = ({
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Dynamic Select Widget — fetches options from x-data-source-url
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+interface DropdownOption {
+  value: string;
+  label: string;
+}
+
+const DynamicSelectWidget: React.FC<WidgetProps> = ({
+  id,
+  value,
+  required,
+  disabled,
+  readonly,
+  onChange,
+  schema,
+  placeholder,
+}) => {
+  // x-data-source-url is passed through schema extras
+  const dataSourceUrl = (schema as any)['x-data-source-url'] as string | undefined;
+  const title = ((schema as any)['x-label'] as string) || (schema.title as string) || '';
+
+  const {
+    data: options,
+    isLoading,
+    isError,
+  } = useQuery<DropdownOption[]>({
+    queryKey: ['dropdown', dataSourceUrl],
+    queryFn: async () => {
+      if (!dataSourceUrl) return [];
+      const { data } = await apiClient.get(dataSourceUrl);
+      // Backend returns [{value, label}] directly or wrapped in {data: [...]}
+      return Array.isArray(data) ? data : (data?.data ?? []);
+    },
+    enabled: !!dataSourceUrl,
+    staleTime: 5 * 60 * 1000, // Cache 5 minutes — timezones don't change often
+    retry: 1,
+  });
+
+  if (!dataSourceUrl) {
+    // Fallback to text input if no data source URL configured
+    return (
+      <Input
+        id={id}
+        value={value ?? ''}
+        disabled={disabled || readonly}
+        required={required}
+        placeholder={placeholder || `Nhập ${title}...`}
+        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
+        className="bg-card/80 border-border/60 hover:border-border transition-colors h-10"
+      />
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-2 h-10 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive text-sm">
+        <AlertCircle className="size-4 shrink-0" />
+        <span>Không thể tải danh sách. Vui lòng thử lại.</span>
+      </div>
+    );
+  }
+
+  return (
+    <Select
+      value={value ?? ''}
+      onValueChange={(v) => onChange(v)}
+      disabled={disabled || readonly || isLoading}
+      required={required}
+    >
+      <SelectTrigger id={id} className="bg-card/80 border-border/60 hover:border-border transition-colors h-10">
+        {isLoading ? (
+          <span className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Loader2 className="size-3.5 animate-spin" />
+            Đang tải...
+          </span>
+        ) : (
+          <SelectValue placeholder={placeholder || `Chọn ${title}...`} />
+        )}
+      </SelectTrigger>
+      <SelectContent className="max-h-64">
+        {(options ?? []).map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+        {!isLoading && (options ?? []).length === 0 && (
+          <div className="px-3 py-4 text-sm text-muted-foreground text-center">
+            Không có dữ liệu
+          </div>
+        )}
+      </SelectContent>
+    </Select>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Exports
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export const customWidgets: RegistryWidgetsType = {
@@ -442,6 +542,7 @@ export const customWidgets: RegistryWidgetsType = {
   RangeWidget: NumberWidget,
   SelectWidget,
   CheckboxWidget,
+  DynamicSelectWidget,
 };
 
 export const customTemplates = {

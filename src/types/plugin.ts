@@ -27,6 +27,17 @@ export interface JsonSchemaProperty {
   $ref?: string;
   /** oneOf combinator — used by backend for enum references */
   oneOf?: JsonSchemaProperty[];
+  // ── UI Metadata extensions ──
+  /** Widget type hint: "select" | "textarea" */
+  'x-widget'?: string;
+  /** Override label displayed in the form */
+  'x-label'?: string;
+  /** URL to fetch dropdown options from (used when x-widget="select") */
+  'x-data-source-url'?: string;
+  /** Conditional visibility expression, e.g. { "field": "type", "equals": "email" } */
+  'x-show-if'?: unknown;
+  /** Logical group name for field grouping */
+  'x-group'?: string;
 }
 
 export interface JsonSchema {

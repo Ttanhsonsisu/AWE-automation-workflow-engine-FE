@@ -37,76 +37,163 @@ const mockWorkflows: WorkflowSchema[] = [
   },
 ];
 
-// ── GET Workflows ──
-export const fetchWorkflows = async (): Promise<WorkflowSchema[]> => {
-  // Uncomment below when backend is ready
-  // const { data } = await apiClient.get<WorkflowSchema[]>('/workflows');
-  // return data;
+export interface WorkflowFilterParams {
+  pageSize?: number;
+  pageNo?: number;
+  groupVersion?: boolean;
+  isPublished?: boolean;
+  name?: string;
+}
 
-  // Mock implementation
-  return new Promise((resolve) => setTimeout(() => resolve(mockWorkflows), 600));
+export const fetchWorkflows = async (params: WorkflowFilterParams = {}): Promise<any> => {
+  // Merge defaults with provided params
+  const queryParams = {
+    pageSize: 30,
+    pageNo: 1,
+    groupVersion: true,
+    ...params
+  };
+
+  const { data } = await apiClient.get('/workflows/definitions', {
+    params: queryParams
+  });
+  console.log("🔥 [fetchWorkflows] Raw Data from API:", data);
+  
+  // To handle if data is already the paginated object vs wrapped in {success, data}
+  return data.data || data; 
 };
 
-export const useWorkflows = () => {
+export const useWorkflows = (params: WorkflowFilterParams = {}) => {
   return useQuery({
-    queryKey: ['workflows'],
-    queryFn: fetchWorkflows,
+    queryKey: ['workflows', params],
+    queryFn: () => fetchWorkflows(params),
+  });
+};
+
+// ── GET Single Workflow Definition by ID ──
+export const fetchWorkflowById = async (id: string): Promise<any> => {
+  const { data } = await apiClient.get(`/workflows/${id}`);
+  return data.data || data;
+};
+
+export const useWorkflow = (id: string) => {
+  return useQuery({
+    queryKey: ['workflow', id],
+    queryFn: () => fetchWorkflowById(id),
+    enabled: !!id,
   });
 };
 
 // ── CREATE Workflow ──
-export const createWorkflow = async (name: string): Promise<WorkflowSchema> => {
-  const newWf: WorkflowSchema = {
-    id: `wf-${Math.floor(Math.random() * 10000)}`,
-    name,
-    status: 'Draft',
-    nodes: [],
-    edges: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  return new Promise((resolve) => setTimeout(() => resolve(newWf), 400));
+import { createWorkflowDefinition } from '@/services/workflowService';
+import type { WorkflowGroup, WorkflowPagedResponse, WorkflowVersion } from '@/types';
+
+export const createWorkflow = async (name: string): Promise<WorkflowVersion> => {
+  try {
+    const result = await createWorkflowDefinition({
+      Name: name,
+      DefinitionJson: { Steps: [], Transitions: [] },
+      UiJson: null,
+    });
+
+    return {
+      id: result.data.id || result.id, 
+      name: result.data.name || result.name || name,
+      version: result.data.version || result.version || 1,
+      isPublished: false,
+      createdAt: new Date().toISOString(),
+      lastUpdated: null,
+      totalRunCount: 0,
+      statusCounts: {
+        Running: 0, Suspended: 0, Completed: 0, Failed: 0, Compensating: 0, Compensated: 0, Cancelled: 0
+      }
+    } as WorkflowVersion;
+  } catch (error) {
+    console.error("Failed to create workflow definition:", error);
+    // Fallback or rethrow
+    throw error;
+  }
 };
 
 export const useCreateWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createWorkflow,
-    onSuccess: (newWf) => {
-      queryClient.setQueryData(['workflows'], (old: WorkflowSchema[] = []) => [newWf, ...old]);
+    onSuccess: (newVersion) => {
+      queryClient.setQueryData(['workflows'], (old: WorkflowPagedResponse | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: [
+            {
+              name: newVersion.name,
+              versions: [newVersion]
+            },
+            ...(Array.isArray(old.items) ? old.items : [])
+          ]
+        };
+      });
     },
   });
 };
 
-// ── UPDATE Status (Toggle Publish) ──
-export const updateWorkflowStatus = async ({ id, status }: { id: string; status: WorkflowStatus }): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, 300));
+// ── Publish / Unpublish API Error Shape ──
+export interface WorkflowApiError {
+  code: string;
+  message: string;
+  type: number;
+}
+
+// ── PUBLISH Workflow Definition ──
+export const publishWorkflow = async (id: string): Promise<void> => {
+  try {
+    await apiClient.post(`/workflows/definitions/${id}/publish`);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) {
+      throw new Error(errData.message);
+    }
+    throw err;
+  }
+};
+
+// ── UNPUBLISH Workflow Definition ──
+export const unpublishWorkflow = async (id: string): Promise<void> => {
+  try {
+    await apiClient.post(`/workflows/definitions/${id}/unpublish`);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) {
+      throw new Error(errData.message);
+    }
+    throw err;
+  }
+};
+
+// ── UPDATE Status (Toggle Publish / Unpublish) ──
+export const updateWorkflowStatus = async ({ id, publish }: { id: string; publish: boolean }): Promise<void> => {
+  if (publish) {
+    await publishWorkflow(id);
+  } else {
+    await unpublishWorkflow(id);
+  }
 };
 
 export const useUpdateWorkflowStatus = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: updateWorkflowStatus,
-    onMutate: async (newStatus) => {
-      await queryClient.cancelQueries({ queryKey: ['workflows'] });
-      const previousWorkflows = queryClient.getQueryData<WorkflowSchema[]>(['workflows']);
-      if (previousWorkflows) {
-        queryClient.setQueryData(
-          ['workflows'],
-          previousWorkflows.map((wf) =>
-            wf.id === newStatus.id ? { ...wf, status: newStatus.status } : wf
-          )
-        );
-      }
-      return { previousWorkflows };
+    onSuccess: (_data, variables) => {
+      // Optimistic update: flip isPublished on the single-definition cache immediately
+      queryClient.setQueryData(['workflow', variables.id], (old: any) => {
+        if (!old) return old;
+        return { ...old, isPublished: variables.publish };
+      });
     },
-    onError: (err, newStatus, context) => {
-      if (context?.previousWorkflows) {
-        queryClient.setQueryData(['workflows'], context.previousWorkflows);
-      }
-    },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
+      // Hard-refresh both the list and the single definition
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['workflow', variables?.id] });
     },
   });
 };
@@ -121,9 +208,39 @@ export const useDeleteWorkflow = () => {
   return useMutation({
     mutationFn: deleteWorkflow,
     onSuccess: (_, deletedId) => {
-      queryClient.setQueryData(['workflows'], (old: WorkflowSchema[] = []) =>
-        old.filter((wf) => wf.id !== deletedId)
-      );
+      // Refresh the list from the server to get accurate groups
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+    },
+  });
+};
+
+// ── GET & UPDATE Workflow Input Data ──
+export const fetchWorkflowInputData = async (id: string): Promise<Record<string, any> | null> => {
+  const { data } = await apiClient.get(`/workflows/definitions/${id}/input-data`);
+  return data.data;
+};
+
+export const useWorkflowInputData = (id: string | null) => {
+  return useQuery({
+    queryKey: ['workflow-input-data', id],
+    queryFn: () => fetchWorkflowInputData(id as string),
+    enabled: !!id,
+  });
+};
+
+export const updateWorkflowInputData = async ({ id, inputData }: { id: string; inputData: Record<string, any> | null }): Promise<any> => {
+  const { data } = await apiClient.put(`/workflows/definitions/${id}/input-data`, {
+    InputData: inputData,
+  });
+  return data.data;
+};
+
+export const useUpdateWorkflowInputData = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateWorkflowInputData,
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['workflow-input-data', variables.id], variables.inputData);
     },
   });
 };

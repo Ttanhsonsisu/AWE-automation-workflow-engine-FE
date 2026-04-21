@@ -18,6 +18,41 @@ export interface EdgeConfig {
   condition?: string; // Optional branching logic
 }
 
+export interface WorkflowVersion {
+  id: string;
+  name: string;
+  description?: string;
+  version: number;
+  isPublished: boolean;
+  createdAt: string;
+  lastUpdated: string | null;
+  totalRunCount: number;
+  statusCounts: {
+    Running: number;
+    Suspended: number;
+    Completed: number;
+    Failed: number;
+    Compensating: number;
+    Compensated: number;
+    Cancelled: number;
+  };
+}
+
+export interface WorkflowGroup {
+  name: string;
+  versions: WorkflowVersion[];
+}
+
+export interface WorkflowPagedResponse {
+  items: WorkflowGroup[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 export interface WorkflowSchema {
   id: string;
   name: string;

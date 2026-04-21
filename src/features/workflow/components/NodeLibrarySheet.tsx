@@ -43,6 +43,8 @@ const DraggableNode: React.FC<{ node: NodeDefinition }> = ({ node }) => {
       outputSchema: node.outputSchema,
       packageId: node.packageId,
       activeVersion: node.activeVersion,
+      triggerSource: node.triggerSource,
+      isSingleton: node.isSingleton,
       icon: '', // icon name not needed for data, resolved at render
     };
     e.dataTransfer.setData('application/reactflow-node-type', node.type);
@@ -125,7 +127,7 @@ export const NodeLibrarySheet: React.FC<NodeLibrarySheetProps> = ({ open, onOpen
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
-      <SheetContent side="right" className="w-80 sm:w-96 p-0 flex flex-col">
+      <SheetContent side="right" className="w-80 sm:w-96 p-0 flex flex-col" aria-describedby={undefined}>
         <SheetHeader className="px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-base font-semibold">

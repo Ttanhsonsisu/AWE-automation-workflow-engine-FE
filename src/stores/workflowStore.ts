@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { JsonSchema } from '@/types/plugin';
 import {
   type Node,
   type Edge,
@@ -20,27 +21,59 @@ export interface ExecutionLogItem {
   nodeId: string;
   nodeLabel: string;
   nodeType: string;
-  status: 'running' | 'success' | 'error';
-  timestamp: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'suspended' | 'retrying';
+  timestamp: string; // Used as fallback or start time
   duration?: number;
   inputData?: any;
   outputData?: any;
   error?: string;
+  // Raw API response mapping
+  instanceId?: string;
+  startTime?: string;
+  endTime?: string;
+  runtimeLogs?: Array<{
+    level: string;
+    message: string;
+    timestamp: string;
+  }>;
 }
 
-export interface WorkflowNodeData {
-  label: string;
+export interface NodeUiState {
+  isValid: boolean;
+  isLoading?: boolean;
+  errorMessage?: string;
+  isHovered?: boolean;
+}
+
+export interface NodePluginMetadata {
+  name: string;
+  displayName?: string;
   category: NodeCategory;
   description?: string;
   icon?: string;
-  config?: Record<string, unknown>;
-  isConfigured?: boolean;
-  // Dynamic plugin metadata from the API
+  version?: string;
   executionMode?: string;
+  executionMetadata?: Record<string, unknown>;
+  packageId?: string | null;
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
-  packageId?: string | null;
-  activeVersion?: string;
+  triggerSource?: string;
+  isSingleton?: boolean;
+}
+
+export interface NodeConfigData {
+  inputs: Record<string, unknown>;
+  inputTypes?: Record<string, 'static' | 'expression'>;
+  nodeLabel?: string;
+  stepId?: string;
+  isConfigured?: boolean;
+  maxRetries?: number;
+}
+
+export interface WorkflowNodeData {
+  pluginMetadata: NodePluginMetadata;
+  config: NodeConfigData;
+  uiState: NodeUiState;
   [key: string]: unknown;
 }
 
@@ -55,6 +88,12 @@ interface HistorySnapshot {
 
 const MAX_HISTORY = 50;
 
+// ── Schema cache entry ───────────────────────────
+interface SchemaCacheEntry {
+  inputSchema: JsonSchema;
+  outputSchema: JsonSchema;
+}
+
 // ── Store Interface ──────────────────────────────
 interface WorkflowState {
   // Workflow meta
@@ -62,9 +101,11 @@ interface WorkflowState {
   workflowName: string;
   isSaved: boolean;
   isExecuting: boolean;
-  
+  workflowExecutionStatus: string | null;
+
   canvasMode: 'editor' | 'execution';
   executionLogs: ExecutionLogItem[];
+  currentInstanceId: string | null;
 
   // Graph
   nodes: WorkflowNode[];
@@ -76,6 +117,9 @@ interface WorkflowState {
 
   // Selected node (for config panel)
   selectedNodeId: string | null;
+
+  // Schema cache: key = "pluginName_version" → schemas
+  schemaCache: Record<string, SchemaCacheEntry>;
 
   // ── Actions ──
   setWorkflow: (id: string, name: string, nodes: WorkflowNode[], edges: WorkflowEdge[]) => void;
@@ -89,6 +133,12 @@ interface WorkflowState {
   // Node manipulation
   addNode: (node: WorkflowNode) => void;
   updateNodeData: (nodeId: string, data: Partial<WorkflowNodeData>) => void;
+  /** Update only the inputs (form data) of a specific node — avoids re-rendering other nodes */
+  updateNodeInputs: (nodeId: string, newInputs: Record<string, unknown>) => void;
+  /** Mark a node as valid/invalid for canvas validation visuals */
+  setNodeValidation: (nodeId: string, isValid: boolean) => void;
+  /** Switch plugin version: updates version and clears inputs to avoid schema mismatch */
+  changeNodeVersion: (nodeId: string, newVersion: string) => void;
   deleteNode: (nodeId: string) => void;
 
   // Selection
@@ -105,12 +155,20 @@ interface WorkflowState {
   markSaved: () => void;
   markUnsaved: () => void;
 
+  // Schema cache
+  setSchemaCache: (key: string, schemas: SchemaCacheEntry) => void;
+  getSchemaCache: (key: string) => SchemaCacheEntry | undefined;
+
   // Execution
   setExecuting: (executing: boolean) => void;
   setCanvasMode: (mode: 'editor' | 'execution') => void;
   addExecutionLog: (log: ExecutionLogItem) => void;
+  /** Update existing log entry by nodeId, or insert if not found */
+  upsertExecutionLog: (nodeId: string, logUpdate: Partial<ExecutionLogItem>) => void;
   updateExecutionLog: (id: string, logUpdate: Partial<ExecutionLogItem>) => void;
   clearExecutionLogs: () => void;
+  setWorkflowExecutionStatus: (status: string | null) => void;
+  setCurrentInstanceId: (instanceId: string | null) => void;
 }
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
@@ -119,13 +177,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   workflowName: 'Untitled Workflow',
   isSaved: true,
   isExecuting: false,
+  workflowExecutionStatus: null,
   canvasMode: 'editor',
   executionLogs: [],
+  currentInstanceId: null,
   nodes: [],
   edges: [],
   history: [],
   historyIndex: -1,
   selectedNodeId: null,
+  schemaCache: {},
 
   // ── Set entire workflow ──
   setWorkflow: (id, name, nodes, edges) => {
@@ -193,6 +254,55 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ),
       isSaved: false,
     }));
+  },
+
+  updateNodeInputs: (nodeId, newInputs) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, config: { ...n.data.config, inputs: newInputs } } } : n
+      ),
+      isSaved: false,
+    }));
+  },
+
+  setNodeValidation: (nodeId, isValid) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, uiState: { ...n.data.uiState, isValid } } }
+          : n
+      ),
+    }));
+  },
+
+  changeNodeVersion: (nodeId, newVersion) => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === nodeId
+          ? {
+            ...n,
+            data: {
+              ...n.data,
+              pluginMetadata: {
+                ...n.data.pluginMetadata,
+                version: newVersion,
+              },
+              config: {
+                ...n.data.config,
+                inputs: {},
+                isConfigured: false,
+              },
+              uiState: {
+                ...n.data.uiState,
+                isValid: true,
+              },
+            },
+          }
+          : n
+      ),
+      isSaved: false,
+    }));
+    get().pushHistory();
   },
 
   deleteNode: (nodeId) => {
@@ -267,6 +377,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   markSaved: () => set({ isSaved: true }),
   markUnsaved: () => set({ isSaved: false }),
 
+  // ── Schema Cache ──
+  setSchemaCache: (key, schemas) => {
+    set((state) => ({
+      schemaCache: { ...state.schemaCache, [key]: schemas },
+    }));
+  },
+  getSchemaCache: (key) => get().schemaCache[key],
+
   // ── Execution ──
   setExecuting: (executing) => {
     set((state) => ({
@@ -274,20 +392,38 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: state.edges.map((e) => ({ ...e, animated: executing })),
     }));
   },
-  
+
   setCanvasMode: (mode) => set({ canvasMode: mode }),
-  
+
   addExecutionLog: (log) => {
     set((state) => ({ executionLogs: [...state.executionLogs, log] }));
   },
 
+  upsertExecutionLog: (nodeId, logUpdate) => {
+    set((state) => {
+      const existingIndex = state.executionLogs.findIndex(l => l.nodeId === nodeId);
+      if (existingIndex >= 0) {
+        const updated = [...state.executionLogs];
+        updated[existingIndex] = { ...updated[existingIndex], ...logUpdate };
+        return { executionLogs: updated };
+      }
+      // Should not happen if addExecutionLog is called first in the flow,
+      // but as a safety net, insert the log as-is if nodeId is missing
+      return state;
+    });
+  },
+
   updateExecutionLog: (id, logUpdate) => {
     set((state) => ({
-      executionLogs: state.executionLogs.map(log => 
+      executionLogs: state.executionLogs.map(log =>
         log.id === id ? { ...log, ...logUpdate } : log
       )
     }));
   },
-  
-  clearExecutionLogs: () => set({ executionLogs: [] }),
+
+  clearExecutionLogs: () => set({ executionLogs: [], workflowExecutionStatus: null }),
+
+  setWorkflowExecutionStatus: (status) => set({ workflowExecutionStatus: status }),
+
+  setCurrentInstanceId: (instanceId) => set({ currentInstanceId: instanceId }),
 }));

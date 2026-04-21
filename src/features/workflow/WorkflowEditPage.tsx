@@ -14,10 +14,14 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { useWorkflow } from '@/api/workflows';
+import { toast } from 'sonner';
+
 import { useWorkflowStore, type WorkflowNode, type NodeCategory } from '@/stores/workflowStore';
 import { WorkflowTopbar } from './components/WorkflowTopbar';
 import { NodeLibrarySheet } from './components/NodeLibrarySheet';
 import { NodeConfigPanel } from './components/NodeConfigPanel';
+import { WorkflowInputConfigDialog } from './WorkflowInputConfigDialog';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -25,14 +29,17 @@ import {
   TooltipTrigger,
   TooltipProvider,
 } from '@/components/ui/tooltip';
-import { Plus } from 'lucide-react';
+import { Plus, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePluginStore } from '@/stores/pluginStore';
+import { hydrateWorkflowFromDefinition, identifyPendingPluginDetails } from './utils/workflowHydration';
+import { usePreloadPluginDetails } from './hooks/usePreloadPluginDetails';
 
 // Custom Nodes / Edges
 import { StartNode } from './components/nodes/StartNode';
 import { ActionNode } from './components/nodes/ActionNode';
 import { CustomEdge } from './components/edges/CustomEdge';
-import { ExecutionLogPanel } from './components/ExecutionLogPanel';
+import { BottomLogPanel } from './components/BottomLogPanel';
 
 // ── Register custom node/edge types (must be outside component!) ──
 const nodeTypes: NodeTypes = {
@@ -51,6 +58,8 @@ const WorkflowCanvas: React.FC = () => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodeLibraryOpen, setNodeLibraryOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [logPanelVisible, setLogPanelVisible] = useState(false);
 
   const {
     nodes,
@@ -63,63 +72,113 @@ const WorkflowCanvas: React.FC = () => {
     setSelectedNode,
     pushHistory,
     canvasMode,
+    isExecuting,
   } = useWorkflowStore();
+
+  const { categories, hasFetched, isLoading: isCatalogLoading, fetchCatalog } = usePluginStore();
 
   const isExecutionMode = canvasMode === 'execution';
 
-  // Initialize demo workflow on mount
+  // Ensure plugin catalog is ready when entering edit page so node icon/style renders immediately.
   useEffect(() => {
-    if (id) {
-      const demoNodes: WorkflowNode[] = [
-        {
-          id: 'trigger-1',
-          type: 'startNode',
-          position: { x: 300, y: 50 },
-          data: {
-            label: 'Webhook',
-            type: 'webhook_trigger',
-            category: 'trigger',
-            description: 'Listen for incoming requests',
-            isConfigured: true,
-            status: 'idle',
-          },
-        },
-        {
-          id: 'action-1',
-          type: 'actionNode',
-          position: { x: 300, y: 250 },
-          data: {
-            label: 'HTTP Request',
-            type: 'http_request',
-            category: 'api',
-            description: 'Call external API',
-            isConfigured: false,
-            status: 'idle',
-          },
-        },
-        {
-          id: 'action-2',
-          type: 'actionNode',
-          position: { x: 300, y: 450 },
-          data: {
-            label: 'Send Email',
-            type: 'send_email',
-            category: 'action',
-            description: 'Notify on success',
-            isConfigured: true,
-            status: 'idle',
-          },
-        },
-      ];
-
-      const demoEdges = [
-        { id: 'e-t1-a1', source: 'trigger-1', target: 'action-1', type: 'customEdge' },
-        { id: 'e-a1-a2', source: 'action-1', target: 'action-2', type: 'customEdge' },
-      ];
-
-      setWorkflow(id, `Workflow ${id}`, demoNodes, demoEdges);
+    if (!hasFetched && !isCatalogLoading) {
+      fetchCatalog();
     }
-  }, [id, setWorkflow]);
+  }, [hasFetched, isCatalogLoading, fetchCatalog]);
+
+  const handlePreloadProgress = useCallback((nodeId: string, status: 'fetching' | 'success' | 'error', error?: Error) => {
+    if (status === 'error') {
+      console.warn(`Failed to preload plugin detail for node ${nodeId}:`, error?.message);
+    }
+  }, []);
+
+  // Preload plugin details for DynamicDll nodes (so forms render instantly)
+  usePreloadPluginDetails(nodes, {
+    onProgress: handlePreloadProgress,
+  });
+
+  // Fetch true definition from backend
+  const { data: workflowDef, isLoading: isFetching } = useWorkflow(id || '');
+
+  // Initialize workflow on mount or when API data changes
+  useEffect(() => {
+    if (id && workflowDef) {
+      let initialNodes = workflowDef.uiJson?.nodes || [];
+      let initialEdges = workflowDef.uiJson?.edges || [];
+
+      // ─────────────────────────────────────────────────────────────
+      // HYDRATION LOGIC: Rebuild UI layout from backend Definition
+      // Target: workflows created via API without UiJson (null)
+      // ─────────────────────────────────────────────────────────────
+      if (initialNodes.length === 0 && workflowDef.definition?.Steps?.length > 0) {
+        console.log('[WorkflowEditPage] Triggering hydration for workflow without UiJson');
+        toast.info("Tái tạo giao diện", {
+          description: "Đang tự động vẽ giao diện từ dữ liệu API gốc..."
+        });
+
+        try {
+          const hydrationResult = hydrateWorkflowFromDefinition(
+            workflowDef.definition.Steps,
+            workflowDef.definition.Transitions || [],
+            categories
+          );
+
+          initialNodes = hydrationResult.nodes;
+          initialEdges = hydrationResult.edges;
+
+          console.log('[WorkflowEditPage] Hydration complete:', {
+            nodeCount: initialNodes.length,
+            edgeCount: initialEdges.length,
+          });
+
+          // Log which nodes need plugin detail fetching
+          const pendingDetails = identifyPendingPluginDetails(initialNodes);
+          if (pendingDetails.length > 0) {
+            console.log('[WorkflowEditPage] Nodes pending plugin detail:', pendingDetails);
+          }
+        } catch (error) {
+          console.error('[WorkflowEditPage] Hydration failed:', error);
+          toast.error("Lỗi tái tạo giao diện", {
+            description: "Không thể tái tạo giao diện từ dữ liệu. Vui lòng kiểm tra log."
+          });
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // SYNC LOGIC: Ensure nodes mirror the true backend state
+      // Updates execution metadata, versions from latest backend data
+      // ─────────────────────────────────────────────────────────────
+      const backendSteps = workflowDef.definition?.Steps || [];
+      if (initialNodes.length > 0 && backendSteps.length > 0) {
+        initialNodes = initialNodes.map((node: any) => {
+          const matchingStep = backendSteps.find((s: any) => s.Id === node.id || s.Id === node.data.config?.stepId);
+          if (matchingStep) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                pluginMetadata: {
+                  ...node.data.pluginMetadata,
+                  executionMode: matchingStep.ExecutionMode || node.data.pluginMetadata?.executionMode,
+                  executionMetadata: matchingStep.ExecutionMetadata || matchingStep.executionMetadata || node.data.pluginMetadata?.executionMetadata,
+                  version: matchingStep.Version || matchingStep.version || node.data.pluginMetadata?.version,
+                }
+              }
+            };
+          }
+          return node;
+        });
+      }
+
+      setWorkflow(id, workflowDef.name || `Workflow ${id}`, initialNodes, initialEdges);
+    }
+
+    return () => {
+      // Clear store entirely when completely leaving this workflow edit session to ensure 100% clean state for next visits
+      setWorkflow('', 'Untitled Workflow', [], []);
+    };
+  }, [id, workflowDef, setWorkflow, categories]);
+
 
   // ── Drag & Drop from Node Library ──
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -157,31 +216,66 @@ const WorkflowCanvas: React.FC = () => {
       const isStart = category === 'trigger' || category === 'Trigger';
 
       // Build plugin metadata (only include defined values)
-      const pluginMeta: Record<string, unknown> = {};
+      const pluginMeta: any = {
+        name: type,
+        displayName: label,
+        category,
+        description,
+      };
       if (pluginData.executionMode) pluginMeta.executionMode = pluginData.executionMode;
       if (pluginData.inputSchema) pluginMeta.inputSchema = pluginData.inputSchema;
       if (pluginData.outputSchema) pluginMeta.outputSchema = pluginData.outputSchema;
       if (pluginData.packageId) pluginMeta.packageId = pluginData.packageId;
-      if (pluginData.activeVersion) pluginMeta.activeVersion = pluginData.activeVersion;
+      if (pluginData.activeVersion) pluginMeta.version = pluginData.activeVersion;
+      if (pluginData.triggerSource) pluginMeta.triggerSource = pluginData.triggerSource;
+      const rawSingleton = pluginData.isSingleton;
+      const isDraggingSingleton = rawSingleton === true || rawSingleton === 'true';
+      if (rawSingleton !== undefined) pluginMeta.isSingleton = isDraggingSingleton;
+
+      console.log("[DEBUG ON DROP] pluginMeta constructed: ", JSON.parse(JSON.stringify(pluginMeta)));
+      console.log("[DEBUG ON DROP] existing nodes: ", nodes.map(n => ({ type: n.type, pluginName: n.data.pluginMetadata?.name, isSingleton: n.data.pluginMetadata?.isSingleton })));
+
+      const isDraggingTrigger = isStart || !!pluginMeta.triggerSource;
+      if (isDraggingTrigger) {
+        const existingTriggers = nodes.filter(
+          (n) => n.type === 'startNode' || n.data.pluginMetadata?.category?.toLowerCase() === 'trigger' || !!n.data.pluginMetadata?.triggerSource
+        );
+        const existingSingleton = existingTriggers.find(
+          (n) => n.data.pluginMetadata?.isSingleton === true
+        );
+
+        // If the canvas already has a Singleton trigger
+        if (existingSingleton) {
+          toast.error(`Workflow đã có trigger "${existingSingleton.data.pluginMetadata?.displayName}" (tính chất độc quyền), do đó không thể thêm bất kỳ trigger nào khác.`);
+          return;
+        }
+
+        // If dragging a Singleton trigger, but canvas already has other triggers
+        if (isDraggingSingleton && existingTriggers.length > 0) {
+          toast.error(`Trigger "${pluginMeta.displayName}" có tính chất độc quyền. Vui lòng xóa các node trigger khác trên canvas trước khi sử dụng nó.`);
+          return;
+        }
+      }
 
       const newNode: WorkflowNode = {
         id: `${type}-${Date.now()}`,
         type: isStart ? 'startNode' : 'actionNode',
         position,
         data: {
-          type,
-          label,
-          category,
-          description,
-          isConfigured: false,
+          pluginMetadata: pluginMeta,
+          config: {
+            inputs: {},
+            isConfigured: false,
+            stepId: `${label.replace(/\s+/g, '_')}_${Date.now().toString().slice(-6)}`,
+          },
+          uiState: { isValid: true },
           status: 'idle',
-          ...pluginMeta,
         },
       };
 
       addNode(newNode);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, nodes]
   );
 
   // ── Selection tracking ──
@@ -224,17 +318,44 @@ const WorkflowCanvas: React.FC = () => {
         e.preventDefault();
         useWorkflowStore.getState().markSaved();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        const currentMode = useWorkflowStore.getState().canvasMode;
+        useWorkflowStore.getState().setCanvasMode(currentMode === 'editor' ? 'execution' : 'editor');
+        toast.info(currentMode === 'editor' ? "Switch to Preview mode" : "Switch to Design mode", {
+          duration: 1500,
+          position: 'top-center'
+        });
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Auto-show log panel when execution starts
+  useEffect(() => {
+    if (isExecuting) {
+      setLogPanelVisible(true);
+    }
+  }, [isExecuting]);
+  if (isFetching && !workflowDef) {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading workflow...</p>
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden relative">
       <WorkflowTopbar />
 
-      <div className="flex flex-row flex-1 w-full overflow-hidden relative">
+      <div className="flex flex-col flex-1 w-full overflow-hidden relative">
         <div className="flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
@@ -267,7 +388,10 @@ const WorkflowCanvas: React.FC = () => {
             snapGrid={[16, 16]}
             deleteKeyCode={['Backspace', 'Delete']}
             connectionLineStyle={{ stroke: 'hsl(var(--primary))', strokeWidth: 2.5 }}
-            className="!bg-slate-50 dark:!bg-slate-950/50"
+            className={cn(
+              "!bg-slate-50 dark:!bg-slate-950/50 transition-all duration-700",
+              isExecutionMode && "bg-slate-100/80 dark:bg-slate-900/80 ring-2 ring-inset ring-primary/10"
+            )}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="hsl(var(--primary)/0.15)" />
             <Controls
@@ -292,21 +416,62 @@ const WorkflowCanvas: React.FC = () => {
                   </TooltipTrigger>
                   <TooltipContent side="left">Add Node</TooltipContent>
                 </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setConfigDialogOpen(true)}
+                      size="icon"
+                      variant="outline"
+                      className="size-10 rounded-xl bg-card/90 hover:bg-secondary text-foreground shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105 border-border/50"
+                    >
+                      <Settings className="size-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Config Workflow Input</TooltipContent>
+                </Tooltip>
               </div>
             </TooltipProvider>
           )}
-        </div>
 
-        {/* Execution Log Right Panel */}
-        {isExecutionMode && (
-          <aside className="w-[400px] min-w-[400px] max-w-[400px] h-full border-l border-border bg-card flex flex-col shrink-0 overflow-hidden animate-in slide-in-from-right-4 duration-300">
-            <ExecutionLogPanel />
-          </aside>
-        )}
+          {/* ── Bottom Log Panel (overlay inside canvas) ── */}
+          <BottomLogPanel
+            visible={logPanelVisible}
+            onClose={() => setLogPanelVisible(false)}
+          />
+
+          {/* ── Floating Toggle Button to reopen log panel ── */}
+          {!logPanelVisible && (
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => setLogPanelVisible(true)}
+                    size="sm"
+                    variant="outline"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 gap-1.5 h-8 px-3 rounded-full bg-card/90 backdrop-blur-sm border-border/60 shadow-lg hover:shadow-xl transition-all text-xs font-semibold animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  >
+                    <Plus className="size-3" />
+                    Show Execution Log
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Open execution log panel</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
       {/* Node Library Sheet */}
       <NodeLibrarySheet open={nodeLibraryOpen} onOpenChange={setNodeLibraryOpen} />
+
+      {/* Workflow Input Config Dialog */}
+      <WorkflowInputConfigDialog
+        open={configDialogOpen}
+        onOpenChange={setConfigDialogOpen}
+        workflowDefinitionId={id || null}
+        workflowName={workflowDef?.name}
+      />
 
       {/* Node Config Panel */}
       <NodeConfigPanel nodeId={editingNodeId} onClose={() => setEditingNodeId(null)} />

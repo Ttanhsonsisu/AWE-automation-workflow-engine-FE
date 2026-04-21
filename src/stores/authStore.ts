@@ -13,34 +13,37 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  
+
   setUser: (user: User) => void;
-  setToken: (token: string) => void;
+  setToken: (token: string | null) => void;
   login: (user: User, token: string) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
 }
 
+/**
+ * Auth store powered by Keycloak OIDC.
+ * 
+ * Tokens are managed by `oidc-client-ts` (stored in sessionStorage).
+ * This store holds UI-relevant auth state synced from the OIDC context.
+ */
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('access_token'),
-  isAuthenticated: !!localStorage.getItem('access_token'),
-  isLoading: false, // Set to true when using async auth (e.g. Keycloak token validation)
+  token: null,
+  isAuthenticated: false,
+  isLoading: true, // Start as loading — OIDC will resolve the state
 
   setUser: (user) => set({ user }),
-  
+
   setToken: (token) => {
-    localStorage.setItem('access_token', token);
-    set({ token, isAuthenticated: true });
+    set({ token, isAuthenticated: !!token });
   },
 
   login: (user, token) => {
-    localStorage.setItem('access_token', token);
     set({ user, token, isAuthenticated: true, isLoading: false });
   },
 
   logout: () => {
-    localStorage.removeItem('access_token');
     set({ user: null, token: null, isAuthenticated: false });
   },
 

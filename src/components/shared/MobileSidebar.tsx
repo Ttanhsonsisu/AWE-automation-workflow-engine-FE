@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { useKeycloakLogout } from '@/hooks/useKeycloakLogout';
 import {
   Sheet,
   SheetContent,
@@ -36,7 +37,8 @@ interface MobileSidebarProps {
 
 export const MobileSidebar: React.FC<MobileSidebarProps> = ({ open, onOpenChange }) => {
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
+  const logout = useKeycloakLogout();
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

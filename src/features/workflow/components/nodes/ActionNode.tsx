@@ -5,14 +5,17 @@ import { usePluginStore } from '@/stores/pluginStore';
 import { BaseNode } from './BaseNode';
 import { catalogToNodeCategories, getNodeDefinition } from '../../nodeDefinitions';
 import { cn } from '@/lib/utils';
-import { Ban } from 'lucide-react';
+import { Ban, AlertTriangle } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export const ActionNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, selected }) => {
-  const { categories } = usePluginStore();
+  const { categories, hasFetched, isLoading } = usePluginStore();
   const nodeGroups = useMemo(() => catalogToNodeCategories(categories), [categories]);
-  const def = useMemo(() => getNodeDefinition(data.type as string, nodeGroups), [data.type, nodeGroups]);
+  const def = useMemo(() => getNodeDefinition(data.pluginMetadata?.name as string, nodeGroups), [data.pluginMetadata?.name, nodeGroups]);
   const Icon = def?.icon || Ban;
-  const isConfigured = data.isConfigured !== false; 
+  const showCatalogSkeleton = !hasFetched || isLoading;
+  const isConfigured = data.config?.isConfigured !== false; 
+  const isValid = data.uiState?.isValid !== false; // Default to valid if not set
 
   return (
     <BaseNode id={id} data={data} selected={selected}>
@@ -31,25 +34,53 @@ export const ActionNode: React.FC<NodeProps<WorkflowNode>> = ({ id, data, select
         className="size-3 bg-card border-2 border-foreground/30 transition-all duration-200 hover:scale-125 hover:bg-foreground opacity-0 group-hover:opacity-100 left-[-6px]"
       />
 
-      <div className="flex flex-col w-[260px] relative overflow-hidden rounded-t-xl">
+      {/* Validation Warning Badge */}
+      {!isValid && (
+        <div className="absolute -top-2.5 -left-2.5 z-10 bg-destructive rounded-full p-1 shadow-md border-2 border-background animate-in zoom-in duration-200">
+          <AlertTriangle className="size-3 text-destructive-foreground" />
+        </div>
+      )}
+
+      <div className={cn(
+        'flex flex-col w-[260px] relative overflow-hidden rounded-t-xl transition-all duration-200',
+        !isValid && 'ring-2 ring-destructive/60',
+      )}>
         <div className={cn('h-1 w-full', def?.color || 'bg-slate-500')} />
         
         <div className="flex flex-col p-4 bg-card">
           <div className="flex items-center gap-3">
             <div className={cn('size-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm border', def?.bgColor || 'bg-slate-500/10 border-slate-500/20')}>
-              <Icon className={cn('size-5', def?.color?.replace('bg-', 'text-'))} />
+              {showCatalogSkeleton ? (
+                <Skeleton className="size-5 rounded-sm" />
+              ) : (
+                <Icon className={cn('size-5', def?.color?.replace('bg-', 'text-'))} />
+              )}
             </div>
             <div className="flex flex-col flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-foreground truncate">{data.label}</h3>
-              <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-                {data.description}
-              </p>
+              {showCatalogSkeleton ? (
+                <>
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-28 mt-1" />
+                </>
+              ) : (
+                <>
+                  <h3 className="text-sm font-semibold text-foreground truncate">{data.config?.nodeLabel || data.pluginMetadata?.displayName}</h3>
+                  <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                    {data.pluginMetadata?.description}
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border">
-             <div className={cn('size-2 rounded-full', isConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse')} />
+             <div className={cn(
+               'size-2 rounded-full',
+               !isValid ? 'bg-destructive animate-pulse' :
+               isConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+             )} />
              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-               {isConfigured ? 'Configured' : 'Needs setup'}
+               {!isValid ? 'Validation Error' :
+                isConfigured ? 'Configured' : 'Needs setup'}
              </span>
           </div>
         </div>

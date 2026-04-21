@@ -77,7 +77,7 @@ const iconMap: Record<string, LucideIcon> = {
 };
 
 // ── Color mapping per API category ──
-const categoryColorMap: Record<string, { color: string; bgColor: string }> = {
+export const categoryColorMap: Record<string, { color: string; bgColor: string }> = {
   Core: { color: 'bg-emerald-500', bgColor: 'bg-emerald-500/10' },
   'Data Manipulation': { color: 'bg-violet-500', bgColor: 'bg-violet-500/10' },
   'Human Interaction': { color: 'bg-amber-500', bgColor: 'bg-amber-500/10' },
@@ -123,6 +123,8 @@ export interface NodeDefinition {
   packageId?: string | null;
   /** Plugin version */
   activeVersion?: string;
+  triggerSource?: string;
+  isSingleton?: boolean;
 }
 
 /**
@@ -145,6 +147,8 @@ export function pluginToNodeDefinition(plugin: PluginDefinition): NodeDefinition
     outputSchema: plugin.outputSchema as unknown as Record<string, unknown>,
     packageId: plugin.packageId,
     activeVersion: plugin.activeVersion,
+    triggerSource: plugin.triggerSource ?? (plugin as any).TriggerSource,
+    isSingleton: plugin.isSingleton ?? (plugin as any).IsSingleton,
   };
 }
 

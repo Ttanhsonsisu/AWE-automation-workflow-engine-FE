@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { formatDistanceToNow } from 'date-fns';
-import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock, Settings, Loader2 } from 'lucide-react';
+import { Plus, Copy, Trash, Play, AlertCircle, RefreshCw, Edit, Search, FileText, Clock, Settings, Loader2, MoreHorizontal, Download, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { WorkflowGroup, WorkflowVersion } from '@/types';
@@ -11,6 +11,9 @@ import {
   useCreateWorkflow,
   useUpdateWorkflowStatus,
   useDeleteWorkflow,
+  useCloneWorkflow,
+  useExportWorkflow,
+  useImportWorkflow,
   type WorkflowFilterParams,
 } from '@/api/workflows';
 import { DataTable } from '@/components/ui/data-table';
@@ -84,6 +87,12 @@ const WorkflowListPage: React.FC = () => {
   const updateStatusMutation = useUpdateWorkflowStatus();
   const createWorkflowMutation = useCreateWorkflow();
   const deleteWorkflowMutation = useDeleteWorkflow();
+  const cloneWorkflowMutation = useCloneWorkflow();
+  const exportWorkflowMutation = useExportWorkflow();
+  const importWorkflowMutation = useImportWorkflow();
+
+  // Hidden file input ref for import
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Track which workflow definition is currently being published/unpublished
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -107,7 +116,26 @@ const WorkflowListPage: React.FC = () => {
     open: false,
     definitionId: null,
   });
-  
+
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    open: boolean;
+    definitionId: string | null;
+    workflowName?: string;
+  }>({
+    open: false,
+    definitionId: null,
+  });
+
+  const [cloneDialog, setCloneDialog] = useState<{
+    open: boolean;
+    definitionId: string | null;
+    defaultName?: string;
+  }>({
+    open: false,
+    definitionId: null,
+  });
+  const [cloneName, setCloneName] = useState('');
+
   // Local state to keep track of user selected version for each group row
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
 
@@ -322,8 +350,9 @@ const WorkflowListPage: React.FC = () => {
       header: 'Actions',
       cell: ({ row }) => {
         const wf = row.original.activeVersion;
+        const groupName = row.original.groupName;
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button 
               title="Edit Workflow Canvas"
               variant="outline" 
@@ -338,7 +367,7 @@ const WorkflowListPage: React.FC = () => {
               variant="outline" 
               size="sm" 
               className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-foreground hover:text-primary transition-colors border-border/50"
-              onClick={() => setInputConfigDialog({ open: true, definitionId: wf.id, workflowName: row.original.groupName })}
+              onClick={() => setInputConfigDialog({ open: true, definitionId: wf.id, workflowName: groupName })}
             >
               <Settings className="size-[13px]" /> Inputs
             </Button>
@@ -347,7 +376,7 @@ const WorkflowListPage: React.FC = () => {
               variant="outline" 
               size="sm" 
               className="h-7 px-2.5 text-[11px] font-medium gap-1.5 shadow-sm text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 transition-colors border-border/50"
-              onClick={() => setRunConfigDialog({ open: true, definitionId: wf.id, workflowName: row.original.groupName })}
+              onClick={() => setRunConfigDialog({ open: true, definitionId: wf.id, workflowName: groupName })}
             >
               <Play className="size-[13px]" /> Run
             </Button>
@@ -360,6 +389,58 @@ const WorkflowListPage: React.FC = () => {
             >
               <Clock className="size-[13px]" /> History
             </Button>
+
+            {/* 3-dot more actions menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                  title="More actions"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel className="text-[11px] text-muted-foreground font-normal">
+                  More Actions
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-[13px] gap-2 cursor-pointer"
+                  onClick={() => {
+                    setCloneName(`${groupName} (Copy)`);
+                    setCloneDialog({ open: true, definitionId: wf.id, defaultName: `${groupName} (Copy)` });
+                  }}
+                  disabled={cloneWorkflowMutation.isPending}
+                >
+                  <Copy className="size-4 text-blue-500" />
+                  Clone
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-[13px] gap-2 cursor-pointer"
+                  onClick={() => {
+                    exportWorkflowMutation.mutate(wf.id, {
+                      onSuccess: () => toast.success('Workflow exported successfully.'),
+                      onError: (err: any) => toast.error(err?.message || 'Export failed.'),
+                    });
+                  }}
+                  disabled={exportWorkflowMutation.isPending}
+                >
+                  <Download className="size-4 text-emerald-500" />
+                  Export
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-[13px] gap-2 cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                  onClick={() => setDeleteConfirmDialog({ open: true, definitionId: wf.id, workflowName: groupName })}
+                >
+                  <Trash className="size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       },
@@ -386,12 +467,51 @@ const WorkflowListPage: React.FC = () => {
             Build and monitor your automated processes.
           </p>
         </div>
-        <Button
-          onClick={() => setCreateDialogOpen(true)}
-          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-        >
-          <Plus className="size-4" /> Create Workflow
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Hidden file input */}
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              // Reset so same file can be re-selected if needed
+              e.target.value = '';
+              importWorkflowMutation.mutate(file, {
+                onSuccess: (result) => {
+                  toast.success(
+                    `"${result.name}" imported successfully as v${result.version}.`,
+                    { description: 'The workflow has been added to your list.' }
+                  );
+                },
+                onError: (err: any) => {
+                  toast.error(err?.message || 'Failed to import workflow.');
+                },
+              });
+            }}
+          />
+          <Button
+            variant="outline"
+            onClick={() => importFileInputRef.current?.click()}
+            disabled={importWorkflowMutation.isPending}
+            className="gap-2 border-border/60 shadow-sm hover:bg-muted/60 transition-all duration-200"
+          >
+            {importWorkflowMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Upload className="size-4" />
+            )}
+            Import
+          </Button>
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm shadow-primary/25 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Plus className="size-4" /> Create Workflow
+          </Button>
+        </div>
       </div>
 
       {/* Filters Toolbar */}
@@ -575,6 +695,143 @@ const WorkflowListPage: React.FC = () => {
         workflowName={runConfigDialog.workflowName}
         onRunSuccess={() => {}}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmDialog.open}
+        onOpenChange={(open) => setDeleteConfirmDialog(prev => ({ ...prev, open }))}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash className="size-5" />
+              Delete Workflow
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{' '}
+              <span className="font-semibold text-foreground">
+                {deleteConfirmDialog.workflowName}
+              </span>
+              ? This action <span className="font-semibold text-destructive">cannot be undone</span> and
+              will remove all versions of this workflow.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmDialog(prev => ({ ...prev, open: false }))}
+              disabled={deleteWorkflowMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!deleteConfirmDialog.definitionId) return;
+                deleteWorkflowMutation.mutate(deleteConfirmDialog.definitionId, {
+                  onSuccess: () => {
+                    toast.success(`"${deleteConfirmDialog.workflowName}" deleted successfully.`);
+                    setDeleteConfirmDialog({ open: false, definitionId: null });
+                  },
+                  onError: (err: any) => {
+                    toast.error(err?.message || 'Failed to delete workflow.');
+                  },
+                });
+              }}
+              disabled={deleteWorkflowMutation.isPending}
+            >
+              {deleteWorkflowMutation.isPending ? (
+                <><Loader2 className="size-4 animate-spin mr-1" /> Deleting...</>
+              ) : (
+                <><Trash className="size-4 mr-1" /> Delete</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone Workflow Dialog */}
+      <Dialog
+        open={cloneDialog.open}
+        onOpenChange={(open) => {
+          setCloneDialog(prev => ({ ...prev, open }));
+          if (!open) setCloneName('');
+        }}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="size-5 text-blue-500" />
+              Clone Workflow
+            </DialogTitle>
+            <DialogDescription>
+              Enter a name for the cloned workflow. It will be created as a new draft.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Input
+              value={cloneName}
+              onChange={(e) => setCloneName(e.target.value)}
+              placeholder="Cloned workflow name"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && cloneName.trim() && cloneDialog.definitionId) {
+                  cloneWorkflowMutation.mutate(
+                    { id: cloneDialog.definitionId, newName: cloneName.trim() },
+                    {
+                      onSuccess: (data) => {
+                        toast.success(`Cloned as "${cloneName}" successfully.`);
+                        setCloneDialog({ open: false, definitionId: null });
+                        setCloneName('');
+                      },
+                      onError: (err: any) => {
+                        toast.error(err?.message || 'Failed to clone workflow.');
+                      },
+                    }
+                  );
+                }
+              }}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCloneDialog({ open: false, definitionId: null });
+                setCloneName('');
+              }}
+              disabled={cloneWorkflowMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!cloneDialog.definitionId || !cloneName.trim()) return;
+                cloneWorkflowMutation.mutate(
+                  { id: cloneDialog.definitionId, newName: cloneName.trim() },
+                  {
+                    onSuccess: () => {
+                      toast.success(`Cloned as "${cloneName}" successfully.`);
+                      setCloneDialog({ open: false, definitionId: null });
+                      setCloneName('');
+                    },
+                    onError: (err: any) => {
+                      toast.error(err?.message || 'Failed to clone workflow.');
+                    },
+                  }
+                );
+              }}
+              disabled={!cloneName.trim() || cloneWorkflowMutation.isPending}
+              className="gap-1.5"
+            >
+              {cloneWorkflowMutation.isPending ? (
+                <><Loader2 className="size-4 animate-spin" /> Cloning...</>
+              ) : (
+                <><Copy className="size-4" /> Clone Workflow</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

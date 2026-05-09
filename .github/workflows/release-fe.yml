@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  OWNER_LC: "" # Khai báo sẵn để linter không báo warning "Context access might be invalid"
+  OWNER_LC: "" # Khai báo sẵn để linter không báo warning
 
 jobs:
   build-and-push-frontend:
@@ -41,18 +41,14 @@ jobs:
       - name: Build and push Frontend
         uses: docker/build-push-action@v5
         with:
-          context: . # Giả định Dockerfile nằm ở thư mục gốc của repo Frontend
+          context: . 
           file: ./Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/awe-frontend:${{ github.ref_name }}
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/awe-frontend:latest
             
-          # ==========================================
-          # CHÌA KHÓA: Ghi đè cấu hình động tại đây
-          # ==========================================
-          build-args: |
-            VITE_API_URL=/api
+          # (ĐÃ XÓA KHỐI BUILD-ARGS VÌ KHÔNG CÒN CẦN THIẾT NỮA)
             
           # Tối ưu thời gian build bằng cache của GitHub Actions
           cache-from: type=gha

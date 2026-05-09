@@ -1,0 +1,59 @@
+name: AWE Frontend Release
+
+# Chỉ kích hoạt khi bạn tạo tag mới (ví dụ: v1.0.0) trên nhánh main
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ghcr.io
+  OWNER_LC: "" # Khai báo sẵn để linter không báo warning "Context access might be invalid"
+
+jobs:
+  build-and-push-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Cấp quyền đẩy Image lên GHCR
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Ép tên GitHub Owner về chữ thường cho chuẩn format của Docker
+      - name: Lowercase repository owner
+        run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }} # Tự động lấy token an toàn
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---------------------------------------------------
+      # BUILD VÀ PUSH FRONTEND (REACT VITE + NGINX)
+      # ---------------------------------------------------
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Giả định Dockerfile nằm ở thư mục gốc của repo Frontend
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/awe-frontend:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/awe-frontend:latest
+            
+          # ==========================================
+          # CHÌA KHÓA: Ghi đè cấu hình động tại đây
+          # ==========================================
+          build-args: |
+            VITE_API_URL=/api
+            
+          # Tối ưu thời gian build bằng cache của GitHub Actions
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

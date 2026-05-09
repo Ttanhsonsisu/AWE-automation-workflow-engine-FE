@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as signalR from '@microsoft/signalr';
 import { useWorkflowStore } from '@/stores/workflowStore';
-
-// Assuming the Hub is hosted at the same origin or via env variable
-const SIGNALR_URL = import.meta.env.VITE_SIGNALR_URL || 'https://localhost:7049/hubs/workflow';
+import { appConfig } from '@/lib/config';
 
 interface NodeStatusUpdateMessage {
   stepId: string;
@@ -30,7 +28,7 @@ export const useWorkflowRealtime = (instanceId: string | null) => {
   // 1. Setup Connection Once
   useEffect(() => {
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(SIGNALR_URL)
+      .withUrl(appConfig.signalrUrl)
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Information)
       .build();

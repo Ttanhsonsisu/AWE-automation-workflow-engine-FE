@@ -1,0 +1,26 @@
+# Dependencies & build output
+node_modules
+dist
+
+# Git
+.git
+.gitignore
+
+# Environment files (inject via --build-arg instead)
+.env
+.env.*
+
+# Editor & OS files
+.vscode
+.idea
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test & coverage
+coverage
+*.test.*
+*.spec.*

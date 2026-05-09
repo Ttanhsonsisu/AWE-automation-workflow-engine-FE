@@ -1,11 +1,9 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosError } from 'axios';
 import { getAccessToken, userManager } from '@/lib/keycloak';
-
-// API base URL - configured via Vite env
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { appConfig } from '@/lib/config';
 
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_URL,
+  baseURL: appConfig.apiUrl,
   timeout: 15000, // 15 seconds
   headers: {
     'Content-Type': 'application/json',

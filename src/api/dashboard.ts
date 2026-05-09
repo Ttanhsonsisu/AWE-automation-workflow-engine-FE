@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import apiClient from '@/services/apiClient';
 import { getAccessToken } from '@/lib/keycloak';
+import { appConfig } from '@/lib/config';
 import type {
   DashboardOverview,
   DashboardTrendsResponse,
@@ -130,7 +131,7 @@ export const useDashboardLive = () => {
     // Close previous connection
     eventSourceRef.current?.close();
 
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const baseUrl = appConfig.apiUrl;
     const token = await getAccessToken();
     const url = new URL(`${baseUrl}/dashboard/live`);
     if (token) url.searchParams.set('access_token', token);

@@ -12,6 +12,13 @@
   </head>
   <body class="font-sans antialiased">
     <div id="root"></div>
+    <!--
+      config.js is generated at container startup by docker/entrypoint.sh.
+      It sets window.__APP_CONFIG__ with runtime environment values.
+      During local development (npm run dev), this file may not exist —
+      src/lib/config.ts gracefully falls back to import.meta.env defaults.
+    -->
+    <script src="/config.js" onerror="console.warn('[config.js] Not found — using dev defaults')"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

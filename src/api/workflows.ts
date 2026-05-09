@@ -200,17 +200,101 @@ export const useUpdateWorkflowStatus = () => {
 
 // ── DELETE Workflow ──
 export const deleteWorkflow = async (id: string): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, 300));
+  try {
+    await apiClient.delete(`/workflows/definitions/${id}`);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) throw new Error(errData.message);
+    throw err;
+  }
 };
 
 export const useDeleteWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteWorkflow,
-    onSuccess: (_, deletedId) => {
-      // Refresh the list from the server to get accurate groups
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
     },
+  });
+};
+
+// ── CLONE Workflow Definition ──
+export interface CloneWorkflowParams {
+  id: string;
+  newName?: string;
+}
+
+export const cloneWorkflow = async ({ id, newName }: CloneWorkflowParams): Promise<WorkflowVersion> => {
+  try {
+    const { data } = await apiClient.post(`/workflows/definitions/${id}/clone`, {
+      SourceDefinitionId: id,
+      NewName: newName,
+    });
+    const result = data.data || data;
+    return {
+      id: result.id,
+      name: result.name,
+      version: result.version || 1,
+      isPublished: false,
+      createdAt: new Date().toISOString(),
+      lastUpdated: null,
+      totalRunCount: 0,
+      statusCounts: {
+        Running: 0, Suspended: 0, Completed: 0, Failed: 0, Compensating: 0, Compensated: 0, Cancelled: 0,
+      },
+    } as WorkflowVersion;
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) throw new Error(errData.message);
+    throw err;
+  }
+};
+
+export const useCloneWorkflow = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: cloneWorkflow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+    },
+  });
+};
+
+// ── EXPORT Workflow Definition ──
+// The exported file contains the exact payload the server expects on import:
+// { Name, DefinitionJson, UiJson } — extracted from the server's exportedJson field
+export const exportWorkflow = async (id: string): Promise<void> => {
+  try {
+    const { data } = await apiClient.get(`/workflows/definitions/${id}/export`);
+    // Server returns: { data: { name, version, exportedJson: { Name, DefinitionJson, UiJson } } }
+    const exportResponse = data.data || data;
+
+    // Extract the importable payload — must have Name, DefinitionJson, UiJson
+    const payload = exportResponse.exportedJson ?? exportResponse.ExportedJson;
+    if (!payload) {
+      throw new Error('Export response does not contain exportedJson payload.');
+    }
+
+    const workflowName = exportResponse.name || exportResponse.Name || `workflow-${id}`;
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${workflowName.replace(/\s+/g, '_')}_v${exportResponse.version || 1}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) throw new Error(errData.message);
+    throw err;
+  }
+};
+
+export const useExportWorkflow = () => {
+  return useMutation({
+    mutationFn: exportWorkflow,
   });
 };
 
@@ -241,6 +325,88 @@ export const useUpdateWorkflowInputData = () => {
     mutationFn: updateWorkflowInputData,
     onSuccess: (data, variables) => {
       queryClient.setQueryData(['workflow-input-data', variables.id], variables.inputData);
+    },
+  });
+};
+
+// ── IMPORT Workflow Definition ──
+// API: POST /api/workflows/definitions/import
+// Body: { ImportedJson: string } — raw JSON string of the exported workflow file
+// Server parses Name, DefinitionJson, UiJson from that JSON string
+export interface ImportDefinitionResponse {
+  id: string;
+  name: string;
+  version: number;
+}
+
+export const importWorkflow = async (file: File): Promise<ImportDefinitionResponse> => {
+  const rawText = await file.text();
+
+  // Parse and validate JSON
+  let parsed: any;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    throw new Error('Invalid JSON file. Please upload a valid workflow export file.');
+  }
+
+  // ASP.NET Core serializes to camelCase by default, so the exported file has:
+  //   { name, definitionJson, uiJson }  (camelCase)
+  // But the server import's TryGetProperty looks for PascalCase: Name, DefinitionJson, UiJson
+  //
+  // Strategy: find the actual definition payload (handle both wrapper and direct formats),
+  // then re-map all keys to PascalCase before sending.
+
+  // Step 1 — unwrap if it's a wrapper format { name, version, exportedJson: {...} }
+  let raw = parsed;
+  if (parsed.exportedJson || parsed.ExportedJson) {
+    raw = parsed.exportedJson ?? parsed.ExportedJson;
+  }
+
+  // Step 2 — extract values supporting both camelCase and PascalCase keys
+  const nameValue    = raw.Name           ?? raw.name           ?? 'ImportedWorkflow';
+  const defJsonValue = raw.DefinitionJson ?? raw.definitionJson;
+  const uiJsonValue  = raw.UiJson         ?? raw.uiJson         ?? {};
+
+  // Step 3 — validate
+  if (!defJsonValue) {
+    throw new Error(
+      'Invalid export file: could not find DefinitionJson. Please re-export the workflow and try again.'
+    );
+  }
+
+  // Step 4 — rebuild payload with PascalCase keys that the server expects
+  const importPayload = {
+    Name: nameValue,
+    DefinitionJson: defJsonValue,
+    UiJson: uiJsonValue,
+  };
+
+  const importedJson = JSON.stringify(importPayload);
+
+  try {
+    const { data } = await apiClient.post('/workflows/definitions/import', {
+      ImportedJson: importedJson,
+    });
+    const result = data.data || data;
+    return {
+      id: result.id,
+      name: result.name,
+      version: result.version,
+    };
+  } catch (err: any) {
+    const errData: WorkflowApiError | undefined = err?.response?.data;
+    if (errData?.message) throw new Error(errData.message);
+    throw err;
+  }
+};
+
+export const useImportWorkflow = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: importWorkflow,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
     },
   });
 };

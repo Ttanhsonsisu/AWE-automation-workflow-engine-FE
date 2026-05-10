@@ -42,12 +42,25 @@ function getConfig(
   );
 }
 
+/**
+ * Ensures the given URL is absolute by combining it with the current window origin.
+ */
+function getAbsoluteUrl(url: string): string {
+  if (!url) return url;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  try {
+    return new URL(url, window.location.origin).href;
+  } catch {
+    return url;
+  }
+}
+
 export const appConfig = {
   /** Base URL for the backend REST API */
-  apiUrl: getConfig('API_URL', 'VITE_API_URL', 'http://localhost:5000/api'),
+  apiUrl: getAbsoluteUrl(getConfig('API_URL', 'VITE_API_URL', 'http://localhost:5000/api')),
 
   /** SignalR hub URL */
-  signalrUrl: getConfig('SIGNALR_URL', 'VITE_SIGNALR_URL', 'https://localhost:7049/hubs/workflow'),
+  signalrUrl: getAbsoluteUrl(getConfig('SIGNALR_URL', 'VITE_SIGNALR_URL', 'https://localhost:7049/hubs/workflow')),
 
   oidc: {
     authority: getConfig('OIDC_AUTHORITY', 'VITE_OIDC_AUTHORITY', 'http://localhost:8081/realms/awe-auth'),

@@ -57,16 +57,16 @@ function getAbsoluteUrl(url: string): string {
 
 export const appConfig = {
   /** Base URL for the backend REST API */
-  apiUrl: getAbsoluteUrl(getConfig('API_URL', 'VITE_API_URL', 'http://localhost:5000/api')),
+  get apiUrl() { return getAbsoluteUrl(getConfig('API_URL', 'VITE_API_URL', 'http://localhost:5000/api')); },
 
   /** SignalR hub URL */
-  signalrUrl: getAbsoluteUrl(getConfig('SIGNALR_URL', 'VITE_SIGNALR_URL', 'https://localhost:7049/hubs/workflow')),
+  get signalrUrl() { return getAbsoluteUrl(getConfig('SIGNALR_URL', 'VITE_SIGNALR_URL', 'https://localhost:7049/hubs/workflow')); },
 
   oidc: {
-    authority: getConfig('OIDC_AUTHORITY', 'VITE_OIDC_AUTHORITY', 'http://localhost:8081/realms/awe-auth'),
-    clientId: getConfig('OIDC_CLIENT_ID', 'VITE_OIDC_CLIENT_ID', 'awe-fe'),
-    redirectUri: getConfig('OIDC_REDIRECT_URI', 'VITE_OIDC_REDIRECT_URI', window.location.origin),
-    postLogoutRedirectUri: getConfig('OIDC_POST_LOGOUT_REDIRECT_URI', 'VITE_OIDC_POST_LOGOUT_REDIRECT_URI', window.location.origin),
-    scope: getConfig('OIDC_SCOPE', 'VITE_OIDC_SCOPE', 'openid profile email roles'),
+    get authority() { return getConfig('OIDC_AUTHORITY', 'VITE_OIDC_AUTHORITY', 'http://localhost:8081/realms/awe-auth'); },
+    get clientId() { return getConfig('OIDC_CLIENT_ID', 'VITE_OIDC_CLIENT_ID', 'awe-fe'); },
+    get redirectUri() { return getConfig('OIDC_REDIRECT_URI', 'VITE_OIDC_REDIRECT_URI', window.location.origin); },
+    get postLogoutRedirectUri() { return getConfig('OIDC_POST_LOGOUT_REDIRECT_URI', 'VITE_OIDC_POST_LOGOUT_REDIRECT_URI', window.location.origin); },
+    get scope() { return getConfig('OIDC_SCOPE', 'VITE_OIDC_SCOPE', 'openid profile email roles'); },
   },
 } as const;

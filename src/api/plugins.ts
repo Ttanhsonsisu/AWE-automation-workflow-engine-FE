@@ -228,11 +228,10 @@ export const toggleVersionActive = async ({
   versionId: string;
   active: boolean;
 }): Promise<void> => {
-  await apiClient.patch(
-    `/plugins/packages/${packageId}/versions/${versionId}/toggle`,
-    { active }
-  );
+  const action = active ? 'activate' : 'deactivate';
+  await apiClient.post(`/plugins/versions/${versionId}/${action}`);
 };
+
 
 export const useToggleVersionActive = () => {
   const queryClient = useQueryClient();

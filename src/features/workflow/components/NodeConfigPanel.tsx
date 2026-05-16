@@ -507,6 +507,7 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                           variant="outline"
                           size="sm"
                           className="h-8 gap-1.5 rounded-lg border-border/50 text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 shrink-0"
+                          onClick={() => window.open('https://ttanhsonsisu.github.io/AWE-docs/docs/category/awe-platform', '_blank')}
                         >
                           <ExternalLink className="size-3.5" />
                           <span className="text-xs font-medium">Tài liệu</span>

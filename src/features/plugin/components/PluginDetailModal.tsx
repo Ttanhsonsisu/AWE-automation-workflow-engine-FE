@@ -367,7 +367,7 @@ const PluginDetailModal: React.FC<PluginDetailModalProps> = ({
 
   // Handle View Docs redirect
   const handleViewDocs = () => {
-    window.open(`/plugins/${plugin.uniqueName}/docs`, '_blank');
+    window.open('https://ttanhsonsisu.github.io/AWE-docs/docs/category/awe-platform', '_blank');
   };
 
   // Handle Toggle Version On/Off

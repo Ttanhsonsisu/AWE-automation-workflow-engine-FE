@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils';
 import { OutputMappingSidebar, SIDEBAR_WIDTH } from './OutputMappingSidebar';
 import {
   Save,
+  Copy,
+  Check,
   Settings2,
   Info,
   Package,
@@ -41,6 +43,7 @@ import {
   Settings,
 } from 'lucide-react';
 import type { JsonSchema, JsonSchemaProperty } from '@/types/plugin';
+import { appConfig } from '@/lib/config';
 
 // RJSF imports
 import Form from '@rjsf/core';
@@ -285,6 +288,48 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
   const nodeVersion = (node?.data.pluginMetadata?.version as string) || '';
   const currentVersion = selectedVersion || nodeVersion || def?.activeVersion || 'Built-in';
   const isBuiltIn = executionMode === 'BuiltIn' || currentVersion === 'Built-in';
+  const isWebhookTrigger = pluginName === 'WebhookTrigger' || pluginName === 'WebhookTriggerPlugin';
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+
+  const webhookUrl = useMemo(() => {
+    if (!isWebhookTrigger) return '';
+
+    const rawRoutePath = (
+      (localFormData.RoutePath as string | undefined) ||
+      (localFormData.routePath as string | undefined) ||
+      ''
+    ).trim();
+
+    if (!rawRoutePath) return '';
+
+    const normalizedRoutePath = rawRoutePath
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '')
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
+    if (!normalizedRoutePath) return '';
+
+    return `${appConfig.apiUrl.replace(/\/+$/, '')}/webhooks/catch/${normalizedRoutePath}`;
+  }, [isWebhookTrigger, localFormData]);
+
+  useEffect(() => {
+    setCopiedWebhookUrl(false);
+  }, [webhookUrl]);
+
+  const handleCopyWebhookUrl = useCallback(async () => {
+    if (!webhookUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopiedWebhookUrl(true);
+      window.setTimeout(() => setCopiedWebhookUrl(false), 1600);
+    } catch {
+      setCopiedWebhookUrl(false);
+    }
+  }, [webhookUrl]);
 
   // Only use sha256 to fetch if we are still on the initially loaded version 
   // (user hasn't actively switched selectedVersion to something different)
@@ -640,6 +685,52 @@ export const NodeConfigPanel: React.FC<NodeConfigPanelProps> = ({ nodeId, onClos
                             >
                               <></>
                             </Form>
+
+                            {isWebhookTrigger && (
+                              <div className="mt-5 space-y-2 rounded-xl border border-border/60 bg-background/60 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <Label className="text-xs font-medium text-muted-foreground">
+                                    Webhook URL
+                                  </Label>
+                                  {copiedWebhookUrl && (
+                                    <span className="text-[11px] font-medium text-emerald-600">
+                                      Copied
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <Input
+                                    readOnly
+                                    value={webhookUrl || 'Nhap RoutePath de tao webhook URL'}
+                                    className="h-9 flex-1 bg-muted/40 font-mono text-xs"
+                                  />
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="icon"
+                                          className="h-9 w-9 shrink-0"
+                                          disabled={!webhookUrl}
+                                          onClick={handleCopyWebhookUrl}
+                                          aria-label="Copy webhook URL"
+                                        >
+                                          {copiedWebhookUrl ? (
+                                            <Check className="size-4 text-emerald-600" />
+                                          ) : (
+                                            <Copy className="size-4" />
+                                          )}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="left" className="text-xs">
+                                        Copy webhook URL
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}

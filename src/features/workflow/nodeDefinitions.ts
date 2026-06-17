@@ -28,6 +28,8 @@ import {
   Cog,
   Layers,
   RefreshCw,
+  GraduationCap,
+  ClipboardCheck,
 } from 'lucide-react';
 import type { PluginDefinition, PluginCategory } from '@/types/plugin';
 
@@ -59,6 +61,8 @@ const iconMap: Record<string, LucideIcon> = {
   'lucide-settings': Settings,
   'lucide-workflow': Workflow,
   'lucide-refresh-cw': RefreshCw,
+  'lucide-graduation-cap': GraduationCap,
+  'lucide-clipboard-check': ClipboardCheck,
   'lucide-puzzle': Puzzle,
   'lucide-box': Box,
   // PascalCase icon names (direct component references)

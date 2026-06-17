@@ -7,6 +7,7 @@ interface NodeStatusUpdateMessage {
   stepId: string;
   status: string;
   timestamp: string;
+  errorMessage?: string | null;
 }
 
 interface LogUpdateMessage {
@@ -43,10 +44,18 @@ export const useWorkflowRealtime = (instanceId: string | null) => {
       const targetNode = state.nodes.find(n => n.id === payload.stepId || n.data.config?.stepId === payload.stepId);
       const nodeIdToUpdate = targetNode ? targetNode.id : payload.stepId;
 
-      state.updateNodeData(nodeIdToUpdate, { status: statusLower });
+      state.updateNodeData(nodeIdToUpdate, {
+        status: statusLower,
+        uiState: {
+          ...targetNode?.data.uiState,
+          isValid: targetNode?.data.uiState?.isValid ?? true,
+          errorMessage: payload.errorMessage ?? undefined,
+        },
+      });
       state.upsertExecutionLog(nodeIdToUpdate, {
         status: statusLower as any,
         timestamp: payload.timestamp,
+        error: payload.errorMessage ?? undefined,
       });
     });
 

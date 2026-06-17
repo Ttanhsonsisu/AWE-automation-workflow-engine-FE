@@ -141,6 +141,8 @@ export interface DefinitionStep {
 export interface DefinitionTransition {
   Source: string;
   Target: string;
+  Condition?: string;
+  condition?: string;
 }
 
 /**
@@ -215,6 +217,9 @@ export function hydrateEdgesFromTransitions(
     source: hydrationMap?.get(transition.Source) || transition.Source,
     target: hydrationMap?.get(transition.Target) || transition.Target,
     type: 'customEdge',
+    data: {
+      condition: transition.Condition || transition.condition,
+    },
   }));
 }
 

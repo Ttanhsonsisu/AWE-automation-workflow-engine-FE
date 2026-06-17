@@ -11,7 +11,7 @@ const WorkflowListPage = lazy(() => import('@/features/workflow/WorkflowListPage
 const WorkflowEditPage = lazy(() => import('@/features/workflow/WorkflowEditPage'));
 const PluginsPage = lazy(() => import('@/features/plugin/PluginsPage'));
 const ExecutionsPage = lazy(() => import('@/features/execution/ExecutionsPage'));
-const AuditLogPage = lazy(() => import('@/features/audit-log/AuditLogPage'));
+// const AuditLogPage = lazy(() => import('@/features/audit-log/AuditLogPage'));
 const TestPage = lazy(() => import('@/features/test/TestPage'));
 const NotFoundPage = lazy(() => import('@/features/misc/NotFoundPage'));
 const ErrorPage = lazy(() => import('@/features/misc/ErrorPage'));
@@ -125,22 +125,22 @@ export const router = createBrowserRouter([
           </SuspenseWrapper>
         ),
       },
-      {
-        path: '/audit-logs',
-        element: (
-          <SuspenseWrapper>
-            <AuditLogPage />
-          </SuspenseWrapper>
-        ),
-      },
-      {
-        path: '/test',
-        element: (
-          <SuspenseWrapper>
-            <TestPage />
-          </SuspenseWrapper>
-        ),
-      },
+      // {
+      //   path: '/audit-logs',
+      //   element: (
+      //     <SuspenseWrapper>
+      //       <AuditLogPage />
+      //     </SuspenseWrapper>
+      //   ),
+      // },
+      // {
+      //   path: '/test',
+      //   element: (
+      //     <SuspenseWrapper>
+      //       <TestPage />
+      //     </SuspenseWrapper>
+      //   ),
+      // },
     ],
   },
 

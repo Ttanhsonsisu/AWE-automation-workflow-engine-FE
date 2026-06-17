@@ -278,12 +278,19 @@ export const WorkflowTopbar: React.FC = () => {
       const transitions = edges.map((edge, index) => {
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
+        const condition = (edge.data as any)?.condition || (edge as any).condition;
 
-        return {
+        const transitionPayload: any = {
           Id: `Transition_${index}`, // Optional if needed
           Source: (sourceNode?.data.config?.stepId as string) || edge.source,
           Target: (targetNode?.data.config?.stepId as string) || edge.target,
         };
+
+        if (condition) {
+          transitionPayload.Condition = condition;
+        }
+
+        return transitionPayload;
       });
 
       const payload = {

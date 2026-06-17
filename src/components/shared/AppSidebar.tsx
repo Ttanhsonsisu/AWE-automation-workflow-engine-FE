@@ -40,8 +40,8 @@ const navItems = [
   { path: '/workflows', label: 'Workflows', icon: Workflow },
   { path: '/plugins', label: 'Plugins', icon: Puzzle },
   { path: '/executions', label: 'Executions', icon: Play },
-  { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
-  { path: '/test', label: 'Test Playground', icon: FlaskConical },
+  // { path: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
+  // { path: '/test', label: 'Test Playground', icon: FlaskConical },
 ];
 
 export const AppSidebar: React.FC = () => {

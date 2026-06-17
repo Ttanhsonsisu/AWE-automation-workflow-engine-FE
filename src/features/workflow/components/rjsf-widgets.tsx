@@ -386,15 +386,17 @@ const CustomArrayFieldTemplate: React.FC<any> = ({
         {items.map((item: any) => (
           <div key={item.key} className="flex items-center gap-2">
             {item.children}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              onClick={item.onDropIndexClick(item.index)}
-            >
-              <X className="size-3.5" />
-            </Button>
+            {item.hasRemove && item.onDropIndexClick && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0"
+                onClick={item.onDropIndexClick(item.index)}
+              >
+                <X className="size-3.5" />
+              </Button>
+            )}
           </div>
         ))}
         {canAdd && (
@@ -413,15 +415,17 @@ const CustomArrayFieldTemplate: React.FC<any> = ({
       {items.map((item: any) => (
         <div key={item.key} className="flex items-start gap-2 p-3 rounded-lg border border-border/40 bg-card/30">
           <div className="flex-1">{item.children}</div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 mt-1"
-            onClick={item.onDropIndexClick(item.index)}
-          >
-            <X className="size-3.5 text-muted-foreground" />
-          </Button>
+          {item.hasRemove && item.onDropIndexClick && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 mt-1"
+              onClick={item.onDropIndexClick(item.index)}
+            >
+              <X className="size-3.5 text-muted-foreground" />
+            </Button>
+          )}
         </div>
       ))}
       {canAdd && (

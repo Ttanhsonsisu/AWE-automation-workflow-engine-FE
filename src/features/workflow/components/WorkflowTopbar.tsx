@@ -279,6 +279,7 @@ export const WorkflowTopbar: React.FC = () => {
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
         const condition = (edge.data as any)?.condition || (edge as any).condition;
+        const branchType = (edge.data as any)?.branchType;
 
         const transitionPayload: any = {
           Id: `Transition_${index}`, // Optional if needed
@@ -288,6 +289,10 @@ export const WorkflowTopbar: React.FC = () => {
 
         if (condition) {
           transitionPayload.Condition = condition;
+        }
+
+        if (branchType === 'true' || branchType === 'false') {
+          transitionPayload.BranchType = branchType;
         }
 
         return transitionPayload;

@@ -129,6 +129,7 @@ interface WorkflowState {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
+  setEdgeBranchType: (edgeId: string, branchType: 'true' | 'false') => void;
 
   // Node manipulation
   addNode: (node: WorkflowNode) => void;
@@ -226,7 +227,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       edges: addEdge(
         {
           ...connection,
-          type: 'smoothstep',
+          type: 'customEdge',
           animated: state.isExecuting,
           style: { strokeWidth: 2 },
         },
@@ -235,6 +236,36 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isSaved: false,
     }));
     // Push history after connect
+    get().pushHistory();
+  },
+
+  setEdgeBranchType: (edgeId, branchType) => {
+    set((state) => {
+      const selectedEdge = state.edges.find((edge) => edge.id === edgeId);
+      if (!selectedEdge) return state;
+
+      const siblingEdges = state.edges.filter(
+        (edge) => edge.source === selectedEdge.source && edge.id !== edgeId
+      );
+      const oppositeBranchType = branchType === 'true' ? 'false' : 'true';
+
+      return {
+        edges: state.edges.map((edge) => {
+          if (edge.id === edgeId) {
+            return { ...edge, data: { ...edge.data, branchType } };
+          }
+
+          // A standard decision has two outgoing edges. Keep the pair mutually
+          // exclusive so users only need to configure one side.
+          if (siblingEdges.length === 1 && edge.id === siblingEdges[0].id) {
+            return { ...edge, data: { ...edge.data, branchType: oppositeBranchType } };
+          }
+
+          return edge;
+        }),
+        isSaved: false,
+      };
+    });
     get().pushHistory();
   },
 

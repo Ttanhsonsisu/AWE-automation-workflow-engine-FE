@@ -104,7 +104,12 @@ const WorkflowCanvas: React.FC = () => {
   useEffect(() => {
     if (id && workflowDef) {
       let initialNodes = workflowDef.uiJson?.nodes || [];
-      let initialEdges = workflowDef.uiJson?.edges || [];
+      let initialEdges = (workflowDef.uiJson?.edges || []).map((edge: any) => ({
+        ...edge,
+        // Older UiJson versions stored plain smooth-step edges. Always route
+        // them through the branch-aware renderer without changing their data.
+        type: 'customEdge',
+      }));
 
       // ─────────────────────────────────────────────────────────────
       // HYDRATION LOGIC: Rebuild UI layout from backend Definition

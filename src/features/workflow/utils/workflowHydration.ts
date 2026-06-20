@@ -143,6 +143,8 @@ export interface DefinitionTransition {
   Target: string;
   Condition?: string;
   condition?: string;
+  BranchType?: 'true' | 'false';
+  branchType?: 'true' | 'false';
 }
 
 /**
@@ -219,6 +221,7 @@ export function hydrateEdgesFromTransitions(
     type: 'customEdge',
     data: {
       condition: transition.Condition || transition.condition,
+      branchType: transition.BranchType || transition.branchType,
     },
   }));
 }

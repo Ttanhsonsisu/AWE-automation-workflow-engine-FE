@@ -371,23 +371,34 @@ const HealthSection: React.FC = () => {
           {(workers.data ?? []).length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">No workers reporting</p>
           ) : (
-            workers.data!.map((w) => (
-              <div key={w.workerId} className="flex items-center justify-between py-1.5">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="text-xs text-muted-foreground truncate max-w-[110px]">
-                        {w.workerId}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{w.workerId}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <Badge variant={w.status === 'Healthy' ? 'default' : 'destructive'} className="text-[10px] h-4">
-                  {w.status}
-                </Badge>
-              </div>
-            ))
+            workers.data!.map((w) => {
+              const label = w.workerType
+                ? `${w.workerType} · ${w.machineName ?? w.workerId}`
+                : w.workerId;
+
+              return (
+                <div key={w.workerId} className="flex items-center justify-between gap-2 py-1.5">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-xs text-muted-foreground truncate max-w-[140px]">
+                          {label}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <div className="text-xs">
+                          <div>{w.workerId}</div>
+                          {w.workerType && <div>{w.workerType}</div>}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Badge variant={w.status === 'Healthy' ? 'default' : 'destructive'} className="text-[10px] h-4">
+                    {w.status}
+                  </Badge>
+                </div>
+              );
+            })
           )}
         </CardContent>
       </Card>
@@ -400,7 +411,8 @@ const HealthSection: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="divide-y divide-border">
-          <HealthItem label="Pending" value={queues.data?.pendingPointers} warn={(queues.data?.pendingPointers ?? 0) > 100} />
+          <HealthItem label="Ready Pending" value={queues.data?.pendingPointers} warn={(queues.data?.pendingPointers ?? 0) > 100} />
+          <HealthItem label="Delayed Pending" value={queues.data?.delayedPendingPointers ?? 0} />
           <HealthItem label="Running" value={queues.data?.runningPointers} />
           <HealthItem label="Suspended" value={queues.data?.suspendedPointers} warn={(queues.data?.suspendedPointers ?? 0) > 0} />
           <HealthItem label="Outbox Backlog" value={queues.data?.outboxBacklog} warn={(queues.data?.outboxBacklog ?? 0) > 50} />
@@ -416,6 +428,8 @@ const HealthSection: React.FC = () => {
         </CardHeader>
         <CardContent className="divide-y divide-border">
           <HealthItem label="Active Schedules" value={scheduler.data?.activeSchedules} />
+          <HealthItem label="Published Cron" value={scheduler.data?.publishedCronTriggers ?? scheduler.data?.activeSchedules} />
+          <HealthItem label="Legacy Schedules" value={scheduler.data?.legacyActiveSchedules ?? 0} />
           <HealthItem label="Pending Sync" value={scheduler.data?.pendingSyncTasks} />
           <HealthItem label="Failed Sync" value={scheduler.data?.failedSyncTasks} warn={(scheduler.data?.failedSyncTasks ?? 0) > 0} />
           <HealthItem label="Overdue" value={scheduler.data?.overdueSyncTasks} warn={(scheduler.data?.overdueSyncTasks ?? 0) > 0} />
@@ -430,7 +444,12 @@ const HealthSection: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="divide-y divide-border">
-          <HealthItem label="Active Routes" value={webhooks.data?.activeRoutes} />
+          <HealthItem label="Published Routes" value={webhooks.data?.activeRoutes} />
+          <HealthItem
+            label="Synced Routes"
+            value={webhooks.data?.syncedRoutes ?? webhooks.data?.activeRoutes}
+            warn={(webhooks.data?.syncedRoutes ?? webhooks.data?.activeRoutes ?? 0) < (webhooks.data?.activeRoutes ?? 0)}
+          />
           <HealthItem label="Idempotency" value={webhooks.data?.idempotencyEnabledRoutes} />
           <HealthItem label="Triggered (24h)" value={webhooks.data?.triggeredExecutionsLast24h} />
         </CardContent>

@@ -54,6 +54,8 @@ export interface DashboardLiveSnapshot {
 /** GET /api/dashboard/workers/health */
 export interface WorkerHealthItem {
   workerId: string;
+  workerType?: string;
+  machineName?: string;
   lastSeenAt: string;
   status: 'Healthy' | 'Stale';
   errorCountLast15m: number;
@@ -65,6 +67,7 @@ export interface QueueHealthResponse {
   runningPointers: number;
   suspendedPointers: number;
   outboxBacklog: number;
+  delayedPendingPointers?: number;
 }
 
 /** GET /api/dashboard/scheduler/health */
@@ -73,6 +76,8 @@ export interface SchedulerHealthResponse {
   pendingSyncTasks: number;
   failedSyncTasks: number;
   overdueSyncTasks: number;
+  publishedCronTriggers?: number;
+  legacyActiveSchedules?: number;
 }
 
 /** GET /api/dashboard/webhooks/health */
@@ -80,4 +85,6 @@ export interface WebhookHealthResponse {
   activeRoutes: number;
   idempotencyEnabledRoutes: number;
   triggeredExecutionsLast24h: number;
+  publishedWebhookTriggers?: number;
+  syncedRoutes?: number;
 }
